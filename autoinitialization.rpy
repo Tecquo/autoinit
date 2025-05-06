@@ -493,6 +493,6 @@ init python early:
             """
             Инициализация ресурсов мода
             """
-            #self.process_audio()
+            self.process_audio()
             self.process_images()
             self.process_files()
