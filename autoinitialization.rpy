@@ -184,7 +184,7 @@ init python early:
                         else:
                             file_name = "_".join(file_path[file_path.find(self.modImagesPath)+len(self.modImagesPath)+1:file_path.find(".")].split("/"))
                             self.count_file("image", file_name, file_path)
-
+        @timer
         def process_sprites_general(self):
             sizes = []
             body_list = []
@@ -269,7 +269,7 @@ init python early:
                             file_composite = "Composite({}, (0, 0), \"{}\", (0, 0), \"{}\", (0, 0), \"{}\", (0, 0), \"{}\")".format(renpy.image_size(body_path), body_path, emo, cloth, acc)
                             file_name = " ".join([acc_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], cloth_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")]) #TODO прибавлять "body" перед эмоцией, эсли припрёт
                             self.count_file("sprite", file_name, file_composite)
-
+        @timer
         def process_files(self):
             """
             Обрабатывает файлы мода.
