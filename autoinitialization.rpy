@@ -286,14 +286,14 @@ init python early:
                             log_file.write("renpy.image(\"%s\", \"%s\")\n    " % (file_name.strip() + self.modPostfix, file))
                         if type == "sprite":
                             log_file.write("renpy.image(\"%s\", %s)\n    " % (file_name.strip(), file))
-            #else:
-            for type, file_name, file in self.modFiles:
-                if type == "sound":
-                    globals()[file_name.strip() + self.modPostfix] = file
-                elif type == "image":
-                    renpy.image(file_name.strip() + self.modPostfix, file)
-                if type == "sprite":
-                    renpy.image(file_name.strip(), eval(file))
+            else:
+                for type, file_name, file in self.modFiles:
+                    if type == "sound":
+                        globals()[file_name.strip() + self.modPostfix] = file
+                    elif type == "image":
+                        renpy.image(file_name.strip() + self.modPostfix, file)
+                    if type == "sprite":
+                        renpy.image(file_name.strip(), eval(file))
         @timer
         def initialize(self):
             """
