@@ -1,4 +1,4 @@
-init python early:
+init python early: # TODO добавить синтаксический сахар, а то я ёбнусь это разбирать через несколько месяцев.
     import time, builtins
 
     class autoInitialization_autoinit:
