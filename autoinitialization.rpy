@@ -168,7 +168,7 @@ init python early:
             audio_extensions = {".wav", ".mp2", ".mp3", ".ogg", ".opus"}
             for file_path in self.modPaths:
                 if file_path.endswith(tuple(audio_extensions)):
-                    file_name = file_path[file_path.rfind("/")+1:file_path.find(".")] + self.modPostfix
+                    file_name = file_path[file_path.rfind("/")+1:file_path.find(".")]
                     self.count_file("sound", file_name, file_path)
 
         @timer
@@ -179,23 +179,29 @@ init python early:
                         pass
                     else:
                         if self.modImagesPath + "/bg/" in file_path or self.modImagesPath + "/cg/" in file_path:
-                            file_name = " ".join(file_path[file_path.find(self.modImagesPath)+len(self.modImagesPath)+1:file_path.find(".")].split("/")) + self.modPostfix
+                            file_name = " ".join(file_path[file_path.find(self.modImagesPath)+len(self.modImagesPath)+1:file_path.find(".")].split("/"))
                             self.count_file("image", file_name, file_path)
                         else:
-                            file_name = "_".join(file_path[file_path.find(self.modImagesPath)+len(self.modImagesPath)+1:file_path.find(".")].split("/")) + self.modPostfix
+                            file_name = "_".join(file_path[file_path.find(self.modImagesPath)+len(self.modImagesPath)+1:file_path.find(".")].split("/"))
                             self.count_file("image", file_name, file_path)
 
         def process_sprites_general(self):
             sizes = []
             body_list = []
             emo_lists = {}
+            clothes_lists = {}
+            accs_lists = {}
 
+            # body
             for file_path in self.modPaths:
                 if "body." in file_path and self.modImagesPath + "/" + "sprites" in file_path:
                     file_path_split = file_path.split("/")
                     body_list.append(file_path_split)
-                    file_name = " ".join([file_path_split[-3], (file_path_split[-4] if file_path_split[-4] != "normal" else "")]) #TODO прибавлять "body" вместо одежды
-                    self.count_file("image", file_name, file_path)
+                    file_composite = "Composite({}, (0, 0), \"{}\")".format(renpy.image_size(file_path), file_path)
+                    file_name = " ".join([file_path_split[-3] + self.modPostfix, (file_path_split[-4] if file_path_split[-4] != "normal" else "")]) #TODO прибавлять "body" вместо одежды
+                    self.count_file("sprite", file_name, file_composite)
+
+            # emo
             for body in body_list:
                 emo_list = []
                 emo_path = list(body)[:-1] + ["emo"]
@@ -203,12 +209,46 @@ init python early:
                     if "/".join(emo_path) in file_path:
                         emo_list.append(file_path)
                 emo_lists["/".join(body)] = emo_list
-            for body in emo_lists: #FIXME
-                for emo in emo_lists[body]:
+            for body_path in emo_lists:
+                for emo in emo_lists[body_path]:
                     emo_path_split = emo.split("/")
-                    file_composite = "Composite({}, (0, 0), \"{}\", (0, 0), \"{}\")".format(renpy.image_size("/".join(body)), "/".join(body), emo)
-                    file_name = " ".join([emo_path_split[-4], emo_path_split[-1].split(".")[0].split("_")[-1], (emo_path_split[-5] if emo_path_split[-5] != "normal" else "")]) #TODO прибавлять "body" перед эмоцией
+                    file_composite = "Composite({}, (0, 0), \"{}\", (0, 0), \"{}\")".format(renpy.image_size(body_path), body_path, emo)
+                    file_name = " ".join([emo_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], (emo_path_split[-5] if emo_path_split[-5] != "normal" else "")]) #TODO прибавлять "body" перед эмоцией, эсли припрёт
                     self.count_file("sprite", file_name, file_composite)
+
+            # cloth
+            for body in body_list:
+                clothes_list = []
+                cloth_path = list(body)[:-1] + ["clothes"]
+                for file_path in self.modPaths:
+                    if "/".join(cloth_path) in file_path:
+                        clothes_list.append(file_path)
+                clothes_lists["/".join(body)] = clothes_list
+            for body_path in clothes_lists:
+                for cloth in clothes_lists[body_path]:
+                    cloth_path_split = cloth.split("/")
+                    file_composite = "Composite({}, (0, 0), \"{}\", (0, 0), \"{}\")".format(renpy.image_size(body_path), body_path, cloth)
+                    file_name = " ".join([cloth_path_split[-4] + self.modPostfix, cloth_path_split[-1].split(".")[0].split("_")[-1], (cloth_path_split[-5] if cloth_path_split[-5] != "normal" else "")]) #TODO прибавлять "body" перед эмоцией, эсли припрёт
+                    self.count_file("sprite", file_name, file_composite)
+            # TODO объявить тело одежда и тело эмоция одежда
+
+            # acc
+            for body in body_list:
+                accs_list = []
+                acc_path = list(body)[:-1] + ["acc"]
+                for file_path in self.modPaths:
+                    if "/".join(acc_path) in file_path:
+                        accs_list.append(file_path)
+                accs_lists["/".join(body)] = accs_list
+            for body_path in accs_lists:
+                for acc in accs_lists[body_path]:
+                    acc_path_split = acc.split("/")
+                    file_composite = "Composite({}, (0, 0), \"{}\", (0, 0), \"{}\")".format(renpy.image_size(body_path), body_path, acc)
+                    file_name = " ".join([acc_path_split[-4] + self.modPostfix, acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")]) #TODO прибавлять "body" перед эмоцией, эсли припрёт
+                    self.count_file("sprite", file_name, file_composite)
+
+            # TODO объявить тело аксессуар, тело одежда аксессуар, тело эмоция одежда аксессуар
+
 
         def process_files(self):
             """
@@ -221,17 +261,17 @@ init python early:
                     log_file.write("init python:\n    ")
                     for type, file_name, file in self.modFiles:
                         if type == "sound":
-                            log_file.write("%s = \"%s\"\n    " % (file_name.strip(), file))
+                            log_file.write("%s = \"%s\"\n    " % (file_name.strip() + self.modPostfix, file))
                         elif type == "image":
-                            log_file.write("renpy.image(\"%s\", \"%s\")\n    " % (file_name.strip(), file))
+                            log_file.write("renpy.image(\"%s\", \"%s\")\n    " % (file_name.strip() + self.modPostfix, file))
                         if type == "sprite":
                             log_file.write("renpy.image(\"%s\", %s)\n    " % (file_name.strip(), file))
             #else:
             for type, file_name, file in self.modFiles:
                 if type == "sound":
-                    globals()[file_name.strip()] = file
+                    globals()[file_name.strip() + self.modPostfix] = file
                 elif type == "image":
-                    renpy.image(file_name.strip(), file)
+                    renpy.image(file_name.strip() + self.modPostfix, file)
                 if type == "sprite":
                     renpy.image(file_name.strip(), eval(file))
         @timer
