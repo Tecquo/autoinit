@@ -1,4 +1,4 @@
-init python early: # TODO добавить синтаксический сахар, а то я ёбнусь это разбирать через несколько месяцев.
+init -1499 python: # TODO добавить синтаксический сахар, а то я ёбнусь это разбирать через несколько месяцев.
     import time, builtins
 
     class autoInitialization_autoinit:
@@ -179,7 +179,8 @@ init python early: # TODO добавить синтаксический саха
                     file_composite = self.make_composite_sprite(renpy.image_size(file_path), file_path)
                     file_name = " ".join([file_path_split[-3] + self.modPostfix, (file_path_split[-4] if file_path_split[-4] != "normal" else "")])
                     self.count_file("sprite", file_name, file_composite)
-
+            
+            #FIXME перепися до process_files
             # emo
             for body in body_list:
                 emo_list = []
@@ -248,6 +249,8 @@ init python early: # TODO добавить синтаксический саха
                             file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo, cloth, acc)
                             file_name = " ".join([acc_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], cloth_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
                             self.count_file("sprite", file_name, file_composite)
+        #FIXME вот до сюда, особенно комбинаторику
+
         @timer
         def process_files(self):
             """
