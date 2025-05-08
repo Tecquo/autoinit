@@ -161,12 +161,8 @@ init python early: # TODO добавить синтаксический саха
                     if self.modImagesPath + "/" + "sprites" in file_path:
                         pass
                     else:
-                        if self.modImagesPath + "/bg/" in file_path or self.modImagesPath + "/cg/" in file_path:
-                            file_name = " ".join(file_path[file_path.find(self.modImagesPath)+len(self.modImagesPath)+1:file_path.find(".")].split("/"))
-                            self.count_file("image", file_name, file_path)
-                        else:
-                            file_name = "_".join(file_path[file_path.find(self.modImagesPath)+len(self.modImagesPath)+1:file_path.find(".")].split("/"))
-                            self.count_file("image", file_name, file_path)
+                        file_name = " ".join(file_path[file_path.find(self.modImagesPath)+len(self.modImagesPath)+1:file_path.find(".")].split("/"))
+                        self.count_file("image", file_name, file_path)
         @timer
         def process_sprites_general(self):
             sizes = []
