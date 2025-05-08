@@ -84,14 +84,12 @@ init python early: # TODO добавить синтаксический саха
             with builtins.open(self.modID + "Logger.txt", "a+") as logger:
                 logger.write(txt + "\n")
 
-        def timer(func):
+        def timer(func): #TODO реализовать в JSON формате
             def wrapper(self, *args, **kwargs):
-                #self.logger_write("\n{} начал работу\n".format(func.__name__)) #TODO реализовать в JSON формате
                 start = time.time()
                 result = func(self, *args, **kwargs)
                 end = time.time()
                 self.logger_write("{} took {}s".format(func.__name__, round(end - start, 4)))
-                #print("{0} took {1:.2f} seconds".format(func.__name__, end - start))
                 return result
             return wrapper
 
