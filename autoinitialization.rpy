@@ -55,7 +55,31 @@ init python early: # TODO добавить синтаксический саха
 
         def _relpath(self, path, start=None):
             return os.path.relpath(path, start).replace(os.sep, "/")
-        
+
+        def make_composite_sprite(self, size, file_body, emotion=None, clothes=None, acc=None): # Добавлять 'body', если голое тело
+            conditions = [
+                ("persistent.sprite_time", "TintMatrix(Color(hls=(0.94, 0.82, 1.0)))", "'sunset'"),
+                ("persistent.sprite_time", "TintMatrix(Color(hls=(0.63, 0.78, 0.82)))", "'night'")
+            ]
+            composite_format = "Composite({0}, (0, 0), \"{1}\""
+            if emotion:
+                composite_format += ", (0, 0), \"{2}\""
+            if clothes:
+                composite_format += ", (0, 0), \"{3}\""
+            if acc:
+                composite_format += ", (0, 0), \"{4}\""
+            composite_format += ")"
+            condition_switch = "ConditionSwitch(\n"
+            for condition, tint, value in conditions:
+                condition_switch += "    \"%s==%s\",\n" % (condition, value)
+                condition_switch += "    Transform(%s,\n" % composite_format.format(size, file_body, emotion, clothes, acc)
+                condition_switch += "        matrixcolor=%s\n" % tint
+                condition_switch += "    ),\n"
+            condition_switch += "    True,\n"
+            condition_switch += "    %s\n" % composite_format.format(size, file_body, emotion, clothes, acc)
+            condition_switch += ")"
+            return condition_switch
+
         def logger_write(self, txt):
             with builtins.open(self.modID + "Logger.txt", "a+") as logger:
                 logger.write(txt + "\n")
@@ -107,16 +131,6 @@ init python early: # TODO добавить синтаксический саха
 
             return "/".join(self.modPaths[0].split("/")[:self.modPaths[0].split("/").index(self.modID)+1])
 
-            #renpy.error("/".join(self.modPaths[0].split("/")[:self.modPaths[0].split("/").index(self.modID)+1]))
-
-            # for dir, fn in renpy.loader.listdirfiles(False):
-            #     if self.modID in fn:
-            #         return self._join_path(dir, self.modID)
-            #     else:
-            #         for root, dirs, files in self._walk(dir):
-            #             if self.modID in dirs:
-            #                 return self._join_path(root, self.modID)
-
         def process_images_path(self):
             """
             Находит путь до папки изображений мода.
@@ -124,35 +138,6 @@ init python early: # TODO добавить синтаксический саха
             :return: str
             """
             return self._join_path(self.modPath, 'images')
-
-        def process_distances(self):
-            """
-            Находит путь до папки sprites, строит названия дистанций по именам внутри (для normal дистанции имя будет "", как в самом БЛ), ищет изображение в каждой из папок с дистанциями, получает размер изображения и добавляет в словарь
-
-            :return: dict
-
-            Пример возврата функции:
-            {
-                "far": {"far", (675, 1080)},
-                "normal": {"", (900, 1080)},
-                "close": {"close", (1125, 1080)},
-            }
-            """
-            folder_names = {}
-            path = os.path.join(self.modImagesPath, "sprites")
-            for name in os.listdir(path):
-                full_path = self._join_path(path, name)
-                if os.path.isdir(full_path):
-                    for root, dirs, files in self._walk(full_path):
-                        for file in files:
-                            relative_path = self._relpath(self._join_path(root, file), renpy.loader.listdirfiles(False)[0][0])
-                            image_size = renpy.image_size(relative_path)
-                            folder_names[name] = (name if name != "normal" else "", image_size)
-                            break
-                        else:
-                            continue
-                        break
-            return folder_names
         
         @timer
         def process_audio(self): # TODO реализовать вложенную систему для названий треков
@@ -197,7 +182,7 @@ init python early: # TODO добавить синтаксический саха
                 if "body." in file_path and self.modImagesPath + "/" + "sprites" in file_path:
                     file_path_split = file_path.split("/")
                     body_list.append(file_path_split)
-                    file_composite = "Composite({}, (0, 0), \"{}\")".format(renpy.image_size(file_path), file_path)
+                    file_composite = self.make_composite_sprite(renpy.image_size(file_path), file_path)
                     file_name = " ".join([file_path_split[-3] + self.modPostfix, (file_path_split[-4] if file_path_split[-4] != "normal" else "")])
                     self.count_file("sprite", file_name, file_composite)
 
@@ -212,7 +197,7 @@ init python early: # TODO добавить синтаксический саха
             for body_path in emo_lists:
                 for emo in emo_lists[body_path]:
                     emo_path_split = emo.split("/")
-                    file_composite = "Composite({}, (0, 0), \"{}\", (0, 0), \"{}\")".format(renpy.image_size(body_path), body_path, emo)
+                    file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo)
                     file_name = " ".join([emo_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], (emo_path_split[-5] if emo_path_split[-5] != "normal" else "")])
                     self.count_file("sprite", file_name, file_composite)
 
@@ -227,7 +212,7 @@ init python early: # TODO добавить синтаксический саха
             for body_path in clothes_lists:
                 for cloth in clothes_lists[body_path]:
                     cloth_path_split = cloth.split("/")
-                    file_composite = "Composite({}, (0, 0), \"{}\", (0, 0), \"{}\")".format(renpy.image_size(body_path), body_path, cloth)
+                    file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, clothes=cloth)
                     file_name = " ".join([cloth_path_split[-4] + self.modPostfix, cloth_path_split[-1].split(".")[0].split("_")[-1], (cloth_path_split[-5] if cloth_path_split[-5] != "normal" else "")])
                     self.count_file("sprite", file_name, file_composite)
 
@@ -242,7 +227,7 @@ init python early: # TODO добавить синтаксический саха
             for body_path in accs_lists:
                 for acc in accs_lists[body_path]:
                     acc_path_split = acc.split("/")
-                    file_composite = "Composite({}, (0, 0), \"{}\", (0, 0), \"{}\")".format(renpy.image_size(body_path), body_path, acc)
+                    file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, acc=acc)
                     file_name = " ".join([acc_path_split[-4] + self.modPostfix, acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
                     self.count_file("sprite", file_name, file_composite)
 
@@ -252,22 +237,22 @@ init python early: # TODO добавить синтаксический саха
                     emo_path_split = emo.split("/")
                     for cloth in clothes_lists[body_path]:
                         cloth_path_split = cloth.split("/")
-                        file_composite = "Composite({}, (0, 0), \"{}\", (0, 0), \"{}\", (0, 0), \"{}\")".format(renpy.image_size(body_path), body_path, emo, cloth)
-                        file_name = " ".join([cloth_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], cloth_path_split[-1].split(".")[0].split("_")[-1], (cloth_path_split[-5] if cloth_path_split[-5] != "normal" else "")]) #TODO прибавлять "body" перед эмоцией, эсли припрёт
+                        file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo, cloth)
+                        file_name = " ".join([cloth_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], cloth_path_split[-1].split(".")[0].split("_")[-1], (cloth_path_split[-5] if cloth_path_split[-5] != "normal" else "")])
                         self.count_file("sprite", file_name, file_composite)
                         for acc in accs_lists[body_path]:
                             acc_path_split = acc.split("/")
 
-                            file_composite = "Composite({}, (0, 0), \"{}\", (0, 0), \"{}\", (0, 0), \"{}\")".format(renpy.image_size(body_path), body_path, emo, acc)
-                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")]) #TODO прибавлять "body" перед эмоцией, эсли припрёт
+                            file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo, acc=acc)
+                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
                             self.count_file("sprite", file_name, file_composite)
 
-                            file_composite = "Composite({}, (0, 0), \"{}\", (0, 0), \"{}\", (0, 0), \"{}\")".format(renpy.image_size(body_path), body_path, cloth, acc)
-                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, cloth_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")]) #TODO прибавлять "body" перед эмоцией, эсли припрёт
+                            file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, clothes=cloth, acc=acc)
+                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, cloth_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
                             self.count_file("sprite", file_name, file_composite)
 
-                            file_composite = "Composite({}, (0, 0), \"{}\", (0, 0), \"{}\", (0, 0), \"{}\", (0, 0), \"{}\")".format(renpy.image_size(body_path), body_path, emo, cloth, acc)
-                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], cloth_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")]) #TODO прибавлять "body" перед эмоцией, эсли припрёт
+                            file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo, cloth, acc)
+                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], cloth_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
                             self.count_file("sprite", file_name, file_composite)
         @timer
         def process_files(self):
