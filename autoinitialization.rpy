@@ -180,63 +180,50 @@ init -1499 python: # TODO добавить синтаксический саха
                     file_name = " ".join([file_path_split[-3] + self.modPostfix, (file_path_split[-4] if file_path_split[-4] != "normal" else "")])
                     self.count_file("sprite", file_name, file_composite)
             
-            #FIXME перепися до process_files
-            # emo
             for body in body_list:
+                # emo
                 emo_list = []
                 emo_path = list(body)[:-1] + ["emo"]
                 for file_path in self.modPaths:
                     if "/".join(emo_path) in file_path:
                         emo_list.append(file_path)
                 emo_lists["/".join(body)] = emo_list
-            for body_path in emo_lists:
-                for emo in emo_lists[body_path]:
-                    emo_path_split = emo.split("/")
-                    file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo)
-                    file_name = " ".join([emo_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], (emo_path_split[-5] if emo_path_split[-5] != "normal" else "")])
-                    self.count_file("sprite", file_name, file_composite)
-
-            # cloth
-            for body in body_list:
+                # clothes
                 clothes_list = []
                 cloth_path = list(body)[:-1] + ["clothes"]
                 for file_path in self.modPaths:
                     if "/".join(cloth_path) in file_path:
                         clothes_list.append(file_path)
                 clothes_lists["/".join(body)] = clothes_list
-            for body_path in clothes_lists:
-                for cloth in clothes_lists[body_path]:
-                    cloth_path_split = cloth.split("/")
-                    file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, clothes=cloth)
-                    file_name = " ".join([cloth_path_split[-4] + self.modPostfix, cloth_path_split[-1].split(".")[0].split("_")[-1], (cloth_path_split[-5] if cloth_path_split[-5] != "normal" else "")])
-                    self.count_file("sprite", file_name, file_composite)
-
-            # acc
-            for body in body_list:
+                # acc
                 accs_list = []
                 acc_path = list(body)[:-1] + ["acc"]
                 for file_path in self.modPaths:
                     if "/".join(acc_path) in file_path:
                         accs_list.append(file_path)
                 accs_lists["/".join(body)] = accs_list
-            for body_path in accs_lists:
-                for acc in accs_lists[body_path]:
-                    acc_path_split = acc.split("/")
-                    file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, acc=acc)
-                    file_name = " ".join([acc_path_split[-4] + self.modPostfix, acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
-                    self.count_file("sprite", file_name, file_composite)
 
-            # комбинаторика из emo, cloth, acc
-            for body_path in emo_lists:
+            for body_path in ["/".join(body) for body in body_list]:
                 for emo in emo_lists[body_path]:
                     emo_path_split = emo.split("/")
+                    file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo)
+                    file_name = " ".join([emo_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], (emo_path_split[-5] if emo_path_split[-5] != "normal" else "")])
+                    self.count_file("sprite", file_name, file_composite)
                     for cloth in clothes_lists[body_path]:
                         cloth_path_split = cloth.split("/")
+                        file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, clothes=cloth)
+                        file_name = " ".join([cloth_path_split[-4] + self.modPostfix, cloth_path_split[-1].split(".")[0].split("_")[-1], (cloth_path_split[-5] if cloth_path_split[-5] != "normal" else "")])
+                        self.count_file("sprite", file_name, file_composite)
+
                         file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo, cloth)
                         file_name = " ".join([cloth_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], cloth_path_split[-1].split(".")[0].split("_")[-1], (cloth_path_split[-5] if cloth_path_split[-5] != "normal" else "")])
                         self.count_file("sprite", file_name, file_composite)
+
                         for acc in accs_lists[body_path]:
                             acc_path_split = acc.split("/")
+                            file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, acc=acc)
+                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
+                            self.count_file("sprite", file_name, file_composite)
 
                             file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo, acc=acc)
                             file_name = " ".join([acc_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
@@ -249,7 +236,6 @@ init -1499 python: # TODO добавить синтаксический саха
                             file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo, cloth, acc)
                             file_name = " ".join([acc_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], cloth_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
                             self.count_file("sprite", file_name, file_composite)
-        #FIXME вот до сюда, особенно комбинаторику
 
         @timer
         def process_files(self):
