@@ -245,7 +245,7 @@ init -1499 python: # TODO добавить синтаксический саха
             Если write_into_file равно True, вместо инициализации записывает ресурсы мода в отдельный файл. Для дальнейшей инициализации ресурсов мода из файла необходимо перезагрузить БЛ.
             """
             if self.write_into_file:
-                with builtins.open("game/" + self.modPath + "/autoinit_assets.txt", "w+") as log_file:
+                with builtins.open(self.modID + "autoinit_assets.rpy", "w+") as log_file:
                     log_file.write("init python:\n    ")
                     for type, file_name, file in self.modFiles:
                         if type == "sound":
