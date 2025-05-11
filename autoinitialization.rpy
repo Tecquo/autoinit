@@ -1,4 +1,4 @@
-init -1499 python: # TODO добавить синтаксический сахар, а то я ёбнусь это разбирать через несколько месяцев.
+init -1498 python: # TODO добавить синтаксический сахар, а то я ёбнусь это разбирать через несколько месяцев.
     import time, builtins
 
     class autoInitialization_autoinit:
@@ -32,11 +32,11 @@ init -1499 python: # TODO добавить синтаксический саха
             self.modID = modID
             self.modPostfix = ("_" + modPostfix if modPostfix else "")
             self.modFiles = []
+            self.modFilesName = []
             self.write_into_file = write_into_file
             self.modPaths = self.process_mod_paths()
             self.modPath = self.process_mod_path()
             self.modImagesPath = self.process_images_path()
-            #self.modDist = self.process_distances()
 
             with builtins.open(self.modID + "Logger.txt", "w+") as logger:
                 logger.write(self.modID.upper() + " " + "AUTOINITIALIZATION" + "\n")
@@ -104,7 +104,9 @@ init -1499 python: # TODO добавить синтаксический саха
             :param file: str
                 путь до файла
             """
-            self.modFiles.append([type, file_name, file])
+            if file_name not in self.modFilesName:
+                self.modFilesName.append(file_name)
+                self.modFiles.append([type, file_name, file])
 
         def process_mod_paths(self):
             """
@@ -222,8 +224,8 @@ init -1499 python: # TODO добавить синтаксический саха
             for body_path in self.body_dict:
                 body_path_split = body_path.split("/")
 
-                file_composite = body_path
-                file_name = " ".join((body_path_split[-3], (body_path_split[-4] if body_path_split[-4] != "normal" else "")))
+                file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path)
+                file_name = " ".join((body_path_split[-3] + self.modPostfix, (body_path_split[-4] if body_path_split[-4] != "normal" else "")))
 
                 self.count_file("sprite", file_name, file_composite)
                 
@@ -250,8 +252,19 @@ init -1499 python: # TODO добавить синтаксический саха
                         for acc in self.body_dict[body_path]["acc"]:
                             acc_path_split = acc.split("/")
 
-                            file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, acc)
-                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, acc_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
+                            file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, acc=acc)
+                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
+
+                            self.count_file("sprite", file_name, file_composite)
+
+
+                            file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo, acc=acc)
+                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
+
+                            self.count_file("sprite", file_name, file_composite)
+
+                            file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, clothes=cloth, acc=acc)
+                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, cloth_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
 
                             self.count_file("sprite", file_name, file_composite)
 
