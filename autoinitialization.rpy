@@ -1,5 +1,7 @@
-init -1498 python: # TODO добавить синтаксический сахар, а то я ёбнусь это разбирать через несколько месяцев.
-    import time, builtins
+init python early:
+    import time
+    import builtins
+    import os
 
     class autoInitialization_autoinit:
         """
@@ -32,64 +34,77 @@ init -1498 python: # TODO добавить синтаксический саха
             self.modID = modID
             self.modPostfix = ("_" + modPostfix if modPostfix else "")
             self.modFiles = []
-            self.modFilesName = []
             self.write_into_file = write_into_file
-            self.modPaths = self.process_mod_paths()
+            # кэширование файлов и директорий RenPy, чтобы не вызывать renpy.list_files() и renpy.loader.listdirfiles() каждый раз
+            try:
+                self.renpyFiles = list(renpy.list_files())
+                self.renpyDirs = list(renpy.loader.listdirfiles(False))
+            except Exception as e:
+                self.renpyFiles = []
+                self.renpyDirs = []
+                renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: Error caching RenPy files/dirs: {}".format(e))
             self.modPath = self.process_mod_path()
             self.modImagesPath = self.process_images_path()
+            self.modDist = self.process_distances()
 
-            with builtins.open(self.modID + "Logger.txt", "w+") as logger:
-                logger.write(self.modID.upper() + " " + "AUTOINITIALIZATION" + "\n")
+            try:
+                with builtins.open(self.modID + "Logger.txt", "w+") as logger:
+                    logger.write(self.modID.upper() + " AUTOINITIALIZATION\n")
+            except Exception as e:
+                renpy.error(self.modID.upper() + " AUTOINITIALIZATION LOGGER ERROR: {}".format(e))
 
             if not(self.__class__.__name__.endswith(self.modID) or self.__class__.__name__.startswith(self.modID)):
-                renpy.error("Название класса автоматической инициализации файлов должно быть уникальным и содержать название корневой папки мода")
+                renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: The auto-initialization class name must be unique and contain the mod root folder name")
 
             self.initialize()
 
+        #region Функции-аналоги с отловом ошибок с заменой "\\" на "/" для RenPy
         def _join_path(self, *args):
-            return "/".join(args)
+            return os.path.join(*args).replace(os.sep, "/")
 
-        def _walk(self, dir):
-            for dirpath, dirnames, filenames in os.walk(dir):
-                yield dirpath.replace(os.sep, "/"), dirnames, filenames
+        def _isfile(self, path):
+            try:
+                return os.path.isfile(path)
+            except Exception as e:
+                renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: Error checking if file '{}': {}".format(path, e))
+                return False
 
-        def _relpath(self, path, start=None):
-            return os.path.relpath(path, start).replace(os.sep, "/")
+        def _listdir(self, path):
+            try:
+                return os.listdir(path)
+            except Exception as e:
+                renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: Error listing directory '{}': {}".format(path, e))
+                return []
 
-        def make_composite_sprite(self, size, file_body, emotion=None, clothes=None, acc=None): # Добавлять 'body', если голое тело
-            conditions = [
-                ("persistent.sprite_time", "TintMatrix(Color(hls=(0.94, 0.82, 1.0)))", "'sunset'"),
-                ("persistent.sprite_time", "TintMatrix(Color(hls=(0.63, 0.78, 0.82)))", "'night'")
-            ]
-            composite_format = "Composite({0}, (0, 0), \"{1}\""
-            if emotion:
-                composite_format += ", (0, 0), \"{2}\""
-            if clothes:
-                composite_format += ", (0, 0), \"{3}\""
-            if acc:
-                composite_format += ", (0, 0), \"{4}\""
-            composite_format += ")"
-            condition_switch = "ConditionSwitch(\n"
-            for condition, tint, value in conditions:
-                condition_switch += "    \"%s==%s\",\n" % (condition, value)
-                condition_switch += "    Transform(%s,\n" % composite_format.format(size, file_body, emotion, clothes, acc)
-                condition_switch += "        matrixcolor=%s\n" % tint
-                condition_switch += "    ),\n"
-            condition_switch += "    True,\n"
-            condition_switch += "    %s\n" % composite_format.format(size, file_body, emotion, clothes, acc)
-            condition_switch += ")"
-            return condition_switch
+        def _walk(self, path):
+            try:
+                for root, dirs, files in os.walk(path):
+                    yield root, dirs, files
+            except Exception as e:
+                renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: Error walking directory '{}': {}".format(path, e))
+                return
+
+        def _relpath(self, path, base):
+            try:
+                return os.path.relpath(path, base).replace(os.sep, "/")
+            except Exception as e:
+                renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: Error getting relative path from '{}' to '{}': {}".format(base, path, e))
+                return path
+        #endregion Функции-аналоги с отловом ошибок с заменой "\\" на "/" для RenPy
 
         def logger_write(self, txt):
-            with builtins.open(self.modID + "Logger.txt", "a+") as logger:
-                logger.write(txt + "\n")
+            try:
+                with builtins.open(self.modID + "Logger.txt", "a+") as logger:
+                    logger.write(txt + "\n")
+            except Exception as e:
+                renpy.error(self.modID.upper() + " AUTOINITIALIZATION LOGGER ERROR: {}".format(e))
 
-        def timer(func): #TODO реализовать в JSON формате
+        def timer(func):
             def wrapper(self, *args, **kwargs):
                 start = time.time()
                 result = func(self, *args, **kwargs)
                 end = time.time()
-                self.logger_write("{} took {}s".format(func.__name__, round(end - start, 4)))
+                self.logger_write("{} took {:.2f} seconds".format(func.__name__, end - start))
                 return result
             return wrapper
 
@@ -104,23 +119,7 @@ init -1498 python: # TODO добавить синтаксический саха
             :param file: str
                 путь до файла
             """
-            if file_name not in self.modFilesName:
-                self.modFilesName.append(file_name)
-                self.modFiles.append([type, file_name, file])
-
-        def process_mod_paths(self):
-            """
-            Находит все пути с названием папки мода, на замену renpy.list_files() для оптимизации
-
-            :return: str
-            """
-            mod_paths = []
-            for i in renpy.list_files():
-                if self.modID + "/" in i or "/".join(["mods", self.modID + "/"]) in i:
-                    mod_paths.append(i)
-            if len(mod_paths) == 0:
-                renpy.error("AUTOINIT: Проверьте наличие мода в папке game (вне вложенных папок)")
-            return mod_paths
+            self.modFiles.append([type, file_name, file])
 
         def process_mod_path(self):
             """
@@ -128,8 +127,13 @@ init -1498 python: # TODO добавить синтаксический саха
 
             :return: str
             """
-
-            return "/".join(self.modPaths[0].split("/")[:self.modPaths[0].split("/").index(self.modID)+1])
+            for dir, fn in self.renpyDirs:
+                if self.modID in fn:
+                    return os.path.join(dir, self.modID).replace(os.sep, "/")
+                else:
+                    for root, dirs, files in os.walk(dir):
+                        if self.modID in dirs:
+                            return os.path.join(root, self.modID).replace(os.sep, "/")
 
         def process_images_path(self):
             """
@@ -139,142 +143,369 @@ init -1498 python: # TODO добавить синтаксический саха
             """
             return self._join_path(self.modPath, 'images')
 
-        def make_composite_sprite(self, size, file_body, emotion=None, clothes=None, acc=None): # Добавлять 'body', если голое тело
-            conditions = [
-                ("persistent.sprite_time", "TintMatrix(Color(hls=(0.94, 0.82, 1.0)))", "'sunset'"),
-                ("persistent.sprite_time", "TintMatrix(Color(hls=(0.63, 0.78, 0.82)))", "'night'")
-            ]
-            composite_format = "Composite({0}, (0, 0), \"{1}\""
-            if emotion:
-                composite_format += ", (0, 0), \"{2}\""
-            if clothes:
-                composite_format += ", (0, 0), \"{3}\""
-            if acc:
-                composite_format += ", (0, 0), \"{4}\""
-            composite_format += ")"
-            condition_switch = "ConditionSwitch(\n"
-            for condition, tint, value in conditions:
-                condition_switch += "    \"%s==%s\",\n" % (condition, value)
-                condition_switch += "    Transform(%s,\n" % composite_format.format(size, file_body, emotion, clothes, acc)
-                condition_switch += "        matrixcolor=%s\n" % tint
-                condition_switch += "    ),\n"
-            condition_switch += "    True,\n"
-            condition_switch += "    %s\n" % composite_format.format(size, file_body, emotion, clothes, acc)
-            condition_switch += ")"
-            return condition_switch
+        def process_distances(self):
+            """
+            Находит путь до папки sprites, строит названия дистанций по именам внутри (для normal дистанции имя будет "", как в самом БЛ), ищет изображение в каждой из папок с дистанциями, получает размер изображения и добавляет в словарь
+
+            :return: dict
+
+            Пример возврата функции:
+            {
+                "far": {"far", (675, 1080)},
+                "normal": {"", (900, 1080)},
+                "close": {"close", (1125, 1080)},
+            }
+            """
+            folder_names = {}
+            path = os.path.join(self.modImagesPath, "sprites")
+            for name in os.listdir(path):
+                full_path = os.path.join(path, name).replace(os.sep, "/")
+                if os.path.isdir(full_path):
+                    for root, dirs, files in os.walk(full_path):
+                        for file in files:
+                            relative_path = os.path.relpath(os.path.join(root, file), self.renpyDirs[0][0]).replace(os.sep, "/")
+                            image_size = renpy.image_size(relative_path)
+                            folder_names[name] = (name if name != "normal" else "", image_size)
+                            break
+                        else:
+                            continue
+                        break
+            return folder_names
 
         @timer
-        def process_audio(self): # TODO реализовать вложенную систему для названий треков
-            """
-            Обрабатывает аудио. Поддерживает расширения (".wav", ".mp2", ".mp3", ".ogg", ".opus")
+        def process_audio(self):
+            audio_extensions = {".wav", ".mp2", ".mp3", ".ogg", ".opus"}
+            for file in self.renpyFiles:
+                if self.modID in file:
+                    file_name = os.path.splitext(os.path.basename(file))[0] + self.modPostfix
+                    if file.endswith(tuple(audio_extensions)):
+                        self.count_file("sound", file_name, file)
 
-            Имя аудио для вызова будет в формате:
-            [имя][_постфикс]
+        def _process_image_file(self, file_path, image_name):
+            rel_path = self._relpath(file_path, self.renpyDirs[0][0])
+            self.count_file("image", image_name, rel_path)
+
+        @timer
+        def process_images(self):
+            for folder in self._listdir(self.modImagesPath):
+                path = os.path.join(self.modImagesPath, folder).replace(os.sep, "/")
+                if self._isfile(path):
+                    image_name = os.path.splitext(os.path.basename(path))[0] + self.modPostfix
+                    self.count_file("image", image_name, path)
+                else:
+                    if folder != 'sprites':
+                        for root, dirs, files in self._walk(path):
+                            for file in files:
+
+                                image_path = os.path.join(root, file).replace("\\", "/")
+                                image_name = os.path.splitext(file)[0]
+                                relative_path = os.path.relpath(root, self.modImagesPath) # Получаем полный путь к изображению и удаляем путь к корню
+                                folder_structure = relative_path.split(os.sep) # Разделяем путь на компоненты и объединяем их в имя изображения
+                                folder_index = folder_structure.index(folder)
+                                folder_structure = folder_structure[folder_index:] + [image_name] # Оставляем только элементы после папки folder
+                                image_name_with_folder = ' '.join(folder_structure).replace('/', '').replace('\\', '') + self.modPostfix
+                                image_path = os.path.relpath(image_path, self.renpyDirs[0][0]).replace(os.sep, "/")
+                                self.count_file("image", image_name_with_folder, image_path)
+                    else:
+                        self.process_sprites(path)
+
+        def process_sprite_clothes_emo_acc(self, emo_l, clothes_l, acc_l, who, file_body, dist):
+            """Обрабатывает спрайт [тело] [эмоция] [одежда] [аксессуар]"""
+            for emotion in emo_l:
+                for clothes in clothes_l:
+                    for acc in acc_l:
+                        file_name = who + self.modPostfix + ' ' + emotion[0] + ' ' + clothes[0] + ' ' + acc[0] + ' ' + self.modDist[dist][0]
+                        file = """
+                            ConditionSwitch(
+                                "persistent.sprite_time=='sunset'",
+                                im.MatrixColor(im.Composite({0},
+                                                            (0, 0), {1},
+                                                            (0, 0), "{2}",
+                                                            (0, 0), "{3}",
+                                                            (0, 0), "{4}"),
+                                                im.matrix.tint(0.94, 0.82, 1.0)
+                                            ),
+                                "persistent.sprite_time=='night'",
+                                im.MatrixColor(im.Composite({0},
+                                                            (0, 0), {1},
+                                                            (0, 0), "{2}",
+                                                            (0, 0), "{3}",
+                                                            (0, 0), "{4}"),
+                                                im.matrix.tint(0.63, 0.78, 0.82)
+                                            ),
+                                True,
+                                im.Composite({0},
+                                            (0, 0), {1},
+                                            (0, 0), "{2}",
+                                            (0, 0), "{3}",
+                                            (0, 0), "{4}")
+                            )
+                        """.format(self.modDist[dist][1], file_body, clothes[1], emotion[1], acc[1])
+                        self.count_file("sprite", file_name, file)
+
+            self.process_sprite_clothes_emo(emo_l, clothes_l, who, file_body, dist)
+            self.process_sprite_clothes_acc(clothes_l, acc_l, who, file_body, dist)
+            self.process_sprite_emo_acc(emo_l, acc_l,  who, file_body, dist)
+            self.process_sprite_emo(emo_l, who, file_body, dist)
+            self.process_sprite_acc(acc_l, who, file_body, dist)
+            self.process_sprite_clothes(clothes_l, who, file_body, dist)
+
+        def process_sprite_clothes_emo(self, emo_l, clothes_l, who, file_body, dist):
+            """Обрабатывает спрайт [тело] [эмоция] [одежда]"""
+            for clothes in clothes_l:
+                for emotion in emo_l:
+                    file_name = who + self.modPostfix + ' ' + emotion[0] + ' ' + clothes[0] + ' ' + self.modDist[dist][0]
+                    file = """
+                        ConditionSwitch(
+                            "persistent.sprite_time=='sunset'",
+                            im.MatrixColor(im.Composite({0},
+                                                        (0, 0), {1},
+                                                        (0, 0), "{2}",
+                                                        (0, 0), "{3}"),
+                                            im.matrix.tint(0.94, 0.82, 1.0)
+                                        ),
+                            "persistent.sprite_time=='night'",
+                            im.MatrixColor(im.Composite({0},
+                                                        (0, 0), {1},
+                                                        (0, 0), "{2}",
+                                                        (0, 0), "{3}"),
+                                            im.matrix.tint(0.63, 0.78, 0.82)
+                                        ),
+                            True,
+                            im.Composite({0},
+                                        (0, 0), {1},
+                                        (0, 0), "{2}",
+                                        (0, 0), "{3}")
+                        )
+                    """.format(self.modDist[dist][1], file_body, clothes[1], emotion[1])
+                    self.count_file("sprite", file_name, file)
+            self.process_sprite_clothes(clothes_l, who, file_body, dist)
+            self.process_sprite_emo(emo_l, who, file_body, dist)
+
+        def process_sprite_clothes_acc(self, clothes_l, acc_l, who, file_body, dist):
+            """Обрабатывает спрайт [тело] [одежда] [аксессуар]"""
+            for clothes in clothes_l:
+                for acc in acc_l:
+                    file_name = who + self.modPostfix + ' ' + clothes[0] + ' ' + acc[0] + ' ' + self.modDist[dist][0]
+                    file = """
+                        ConditionSwitch(
+                            "persistent.sprite_time=='sunset'",
+                            im.MatrixColor(im.Composite({0},
+                                                        (0, 0), {1},
+                                                        (0, 0), "{2}",
+                                                        (0, 0), "{3}"),
+                                            im.matrix.tint(0.94, 0.82, 1.0)
+                                        ),
+                            "persistent.sprite_time=='night'",
+                            im.MatrixColor(im.Composite({0},
+                                                        (0, 0), {1},
+                                                        (0, 0), "{2}",
+                                                        (0, 0), "{3}"),
+                                            im.matrix.tint(0.63, 0.78, 0.82)
+                                        ),
+                            True,
+                            im.Composite({0},
+                                        (0, 0), {1},
+                                        (0, 0), "{2}",
+                                        (0, 0), "{3}")
+                        )
+                    """.format(self.modDist[dist][1], file_body, clothes[1], acc[1])
+                    self.count_file("sprite", file_name, file)
+            self.process_sprite_clothes(clothes_l, who, file_body, dist)
+            self.process_sprite_acc(acc_l, who, file_body, dist)
+
+        def process_sprite_emo_acc(self, emo_l, acc_l, who, file_body, dist):
+            """Обрабатывает спрайт [тело] [эмоция] [аксессуар]"""
+            for emotion in emo_l:
+                for acc in acc_l:
+                    file_name = who + self.modPostfix + ' ' + emotion[0] + ' ' + acc[0] + ' ' + self.modDist[dist][0]
+                    file = """
+                        ConditionSwitch(
+                            "persistent.sprite_time=='sunset'",
+                            im.MatrixColor(im.Composite({0},
+                                                        (0, 0), {1},
+                                                        (0, 0), "{2}",
+                                                        (0, 0), "{3}"),
+                                            im.matrix.tint(0.94, 0.82, 1.0)
+                                        ),
+                            "persistent.sprite_time=='night'",
+                            im.MatrixColor(im.Composite({0},
+                                                        (0, 0), {1},
+                                                        (0, 0), "{2}",
+                                                        (0, 0), "{3}"),
+                                            im.matrix.tint(0.63, 0.78, 0.82)
+                                        ),
+                            True,
+                            im.Composite({0},
+                                        (0, 0), {1},
+                                        (0, 0), "{2}",
+                                        (0, 0), "{3}")
+                        )
+                    """.format(self.modDist[dist][1], file_body, emotion[1], acc[1])
+                    self.count_file("sprite", file_name, file)
+            self.process_sprite_emo(emo_l, who, file_body, dist)
+            self.process_sprite_acc(acc_l, who, file_body, dist)
+
+        def process_sprite_clothes(self, clothes_l, who, file_body, dist):
+            """Обрабатывает спрайт [тело] [одежда]"""
+            for clothes in clothes_l:
+                file_name = who + self.modPostfix + ' ' + clothes[0] + ' ' + self.modDist[dist][0]
+                file = """
+                    ConditionSwitch(
+                        "persistent.sprite_time=='sunset'",
+                        im.MatrixColor(im.Composite({0},
+                                                    (0, 0), {1},
+                                                    (0, 0), "{2}"),
+                                        im.matrix.tint(0.94, 0.82, 1.0)
+                                    ),
+                        "persistent.sprite_time=='night'",
+                        im.MatrixColor(im.Composite({0},
+                                                    (0, 0), {1},
+                                                    (0, 0), "{2}"),
+                                        im.matrix.tint(0.63, 0.78, 0.82)
+                                    ),
+                        True,
+                        im.Composite({0},
+                                    (0, 0), {1},
+                                    (0, 0), "{2}")
+                    )
+                """.format(self.modDist[dist][1], file_body, clothes[1])
+                self.count_file("sprite", file_name, file)
+
+        def process_sprite_acc(self, acc_l, who, file_body, dist):
+            """Обрабатывает спрайт [тело] [аксессуар]"""
+            for acc in acc_l:
+                file_name = who + self.modPostfix + ' ' + acc[0] + ' ' + self.modDist[dist][0]
+                file = """
+                    ConditionSwitch(
+                        "persistent.sprite_time=='sunset'",
+                        im.MatrixColor(im.Composite({0},
+                                                    (0, 0), {1},
+                                                    (0, 0), "{2}"),
+                                        im.matrix.tint(0.94, 0.82, 1.0)
+                                    ),
+                        "persistent.sprite_time=='night'",
+                        im.MatrixColor(im.Composite({0},
+                                                    (0, 0), {1},
+                                                    (0, 0), "{2}"),
+                                        im.matrix.tint(0.63, 0.78, 0.82)
+                                    ),
+                        True,
+                        im.Composite({0},
+                                    (0, 0), {1},
+                                    (0, 0), "{2}")
+                    )
+                """.format(self.modDist[dist][1], file_body, acc[1])
+                self.count_file("sprite", file_name, file)
+
+        def process_sprite_emo(self, emo_l, who, file_body, dist):
+            """Обрабатывает спрайт [тело] [эмоция]"""
+            for emotion in emo_l:
+                file_name = who + self.modPostfix + ' ' + emotion[0] + ' ' + self.modDist[dist][0]
+                file = """
+                    ConditionSwitch(
+                        "persistent.sprite_time=='sunset'",
+                        im.MatrixColor(im.Composite({0},
+                                                    (0, 0), {1},
+                                                    (0, 0), "{2}"),
+                                        im.matrix.tint(0.94, 0.82, 1.0)
+                                    ),
+                        "persistent.sprite_time=='night'",
+                        im.MatrixColor(im.Composite({0},
+                                                    (0, 0), {1},
+                                                    (0, 0), "{2}"),
+                                        im.matrix.tint(0.63, 0.78, 0.82)
+                                    ),
+                        True,
+                        im.Composite({0},
+                                    (0, 0), {1},
+                                    (0, 0), "{2}")
+                    )
+                """.format(self.modDist[dist][1], file_body, emotion[1])
+                self.count_file("sprite", file_name, file)
+
+        def process_sprite(self, who, file_body, dist):
+            """Обрабатывает спрайт [тело]"""
+            file_name = "{}{} {}".format(who, self.modPostfix, self.modDist[dist][0])
+            file = """
+                ConditionSwitch(
+                    "persistent.sprite_time=='sunset'",
+                    im.MatrixColor(im.Composite({0},
+                                                (0, 0), {1}),
+                                    im.matrix.tint(0.94, 0.82, 1.0)
+                                ),
+                    "persistent.sprite_time=='night'",
+                    im.MatrixColor(im.Composite({0},
+                                                (0, 0), {1}),
+                                    im.matrix.tint(0.63, 0.78, 0.82)
+                                ),
+                    True,
+                    im.Composite({0},
+                                (0, 0), {1})
+                )
+            """.format(self.modDist[dist][1], file_body)
+            self.count_file("sprite", file_name, file)
+
+        @timer
+        def process_sprites(self, path):
+            """Обрабатывает спрайты и все их комбинации
+
+            Имя спрайта для вызова будет в формате:
+            [название спрайта][_постфикс]
+            [название спрайта][_постфикс] [эмоция]
+            [название спрайта][_постфикс] [эмоция] [одежда]
+            [название спрайта][_постфикс] [эмоция] [одежда] [аксессуар]
+            и любые другие комбинации.
 
             Пример:
-            newmusic
+            dv
+            dv normal
+            dv normal sport
+            dv normal sport jewelry
             """
-            audio_extensions = {".wav", ".mp2", ".mp3", ".ogg", ".opus"}
-            for file_path in self.modPaths:
-                if file_path.endswith(tuple(audio_extensions)):
-                    file_name = file_path[file_path.rfind("/")+1:file_path.find(".")]
-                    self.count_file("sound", file_name, file_path)
+            for dist in os.listdir(path):
+                who_path = os.path.join(path, dist).replace(os.sep, "/")
+                for who in os.listdir(who_path):
+                    who_path_num = os.path.join(who_path, who).replace(os.sep, "/")
+                    for numb in os.listdir(who_path_num):
+                        sprite_folders = os.listdir(os.path.join(who_path_num, numb).replace(os.sep, "/"))
 
-        @timer
-        def process_images(self): # TODO 
-            body_dict = {}
-            sprite_dict = {}
-            for file_path in self.modPaths:
-                if file_path.endswith((".png", ".jpg", ".webp")):
-                    if self.modImagesPath + "/" + "sprites" in file_path:
-                        if "body." in file_path:
-                            emo_list = []
-                            clothes_list = []
-                            acc_list = []
+                        for i in sprite_folders:
+                            if 'body' in i:
+                                file_body = "\"" + str(os.path.relpath(os.path.join(who_path_num, numb, i).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) + "\""
+                                break
+                        else:
+                            file_body = 'im.Alpha("images/misc/soviet_games.png", 0.0)' # Заглушка, если не нашли тело
 
-                            file_path_split = file_path.split("/")
+                        clothes_l = []
+                        emo_l = []
+                        acc_l = []
 
-                            body_path = list(file_path_split)[:-1]
-                            emo_path = body_path + ["emo"]
-                            clothes_path = body_path + ["clothes"]
-                            acc_path = body_path + ["acc"]
-                            
-                            body_path = "/".join(body_path) + "/"
-                            emo_path = "/".join(emo_path) + "/"
-                            clothes_path = "/".join(clothes_path) + "/"
-                            acc_path = "/".join(acc_path) + "/"
+                        if 'clothes' in sprite_folders:
+                            clothes_l = [(os.path.splitext(clothes)[0].split('_'+numb+"_", 1)[-1], os.path.relpath(os.path.join(who_path_num, numb, 'clothes', clothes).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) for clothes in os.listdir(os.path.join(who_path_num, numb, 'clothes'))]
 
-                            for file_subpath in self.modPaths:
-                                if emo_path in file_subpath:
-                                    emo_list.append(file_subpath)
-                                if clothes_path in file_subpath:
-                                    clothes_list.append(file_subpath)
-                                if acc_path in file_subpath:
-                                    acc_list.append(file_subpath)
+                        if 'emo' in sprite_folders:
+                            emo_l = [(os.path.splitext(emo)[0].split('_'+numb+"_", 1)[-1], os.path.relpath(os.path.join(who_path_num, numb, 'emo', emo).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) for emo in os.listdir(os.path.join(who_path_num, numb, 'emo'))]
 
-                            body_dict[file_path] = {"emo": emo_list, "clothes": clothes_list, "acc": acc_list}
-                    else:
-                        file_name = " ".join(file_path[file_path.find(self.modImagesPath)+len(self.modImagesPath)+1:file_path.find(".")].split("/"))
-                        self.count_file("image", file_name, file_path)
-            self.body_dict = body_dict
-            self.process_sprites()
+                        if 'acc' in sprite_folders:
+                            acc_l = [(os.path.splitext(acc)[0].split('_'+numb+"_", 1)[-1], os.path.relpath(os.path.join(who_path_num, numb, 'acc', acc).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) for acc in os.listdir(os.path.join(who_path_num, numb, 'acc'))]
 
-        @timer
-        def process_sprites(self):
-            for body_path in self.body_dict:
-                body_path_split = body_path.split("/")
+                        self.process_sprite(who, file_body, dist)
+                        if clothes_l and emo_l and acc_l:
+                            self.process_sprite_clothes_emo_acc(emo_l, clothes_l, acc_l, who, file_body, dist)
+                        elif clothes_l and emo_l:
+                            self.process_sprite_clothes_emo(emo_l, clothes_l, who, file_body, dist)
+                        elif clothes_l and acc_l:
+                            self.process_sprite_clothes_acc(clothes_l, acc_l, who, file_body, dist)
+                        elif emo_l and acc_l:
+                            self.process_sprite_emo_acc(emo_l, acc_l,  who, file_body, dist)
+                        elif clothes_l:
+                            self.process_sprite_clothes(clothes_l, who, file_body, dist)
+                        elif acc_l:
+                            self.process_sprite_acc(acc_l, who, file_body, dist)
+                        elif emo_l:
+                            self.process_sprite_emo(emo_l, who, file_body, dist)
 
-                file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path)
-                file_name = " ".join((body_path_split[-3] + self.modPostfix, (body_path_split[-4] if body_path_split[-4] != "normal" else "")))
-
-                self.count_file("sprite", file_name, file_composite)
-                
-                for emo in self.body_dict[body_path]["emo"]:
-
-                    emo_path_split = emo.split("/")
-                    file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo)
-                    file_name = " ".join([emo_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], (emo_path_split[-5] if emo_path_split[-5] != "normal" else "")])
-
-                    self.count_file("sprite", file_name, file_composite)
-
-                    for cloth in self.body_dict[body_path]["clothes"]:
-                        cloth_path_split = cloth.split("/")
-
-                        file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, clothes=cloth)
-                        file_name = " ".join([cloth_path_split[-4] + self.modPostfix, cloth_path_split[-1].split(".")[0].split("_")[-1], (cloth_path_split[-5] if cloth_path_split[-5] != "normal" else "")])
-                        self.count_file("sprite", file_name, file_composite)
-
-                        file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo, cloth)
-                        file_name = " ".join([cloth_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], cloth_path_split[-1].split(".")[0].split("_")[-1], (cloth_path_split[-5] if cloth_path_split[-5] != "normal" else "")])
-
-                        self.count_file("sprite", file_name, file_composite)
-
-                        for acc in self.body_dict[body_path]["acc"]:
-                            acc_path_split = acc.split("/")
-
-                            file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, acc=acc)
-                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
-
-                            self.count_file("sprite", file_name, file_composite)
-
-
-                            file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo, acc=acc)
-                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
-
-                            self.count_file("sprite", file_name, file_composite)
-
-                            file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, clothes=cloth, acc=acc)
-                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, cloth_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (acc_path_split[-5] if acc_path_split[-5] != "normal" else "")])
-
-                            self.count_file("sprite", file_name, file_composite)
-
-                            file_composite = self.make_composite_sprite(renpy.image_size(body_path), body_path, emo, cloth, acc)
-                            file_name = " ".join([acc_path_split[-4] + self.modPostfix, emo_path_split[-1].split(".")[0].split("_")[-1], cloth_path_split[-1].split(".")[0].split("_")[-1], acc_path_split[-1].split(".")[0].split("_")[-1], (cloth_path_split[-5] if cloth_path_split[-5] != "normal" else "")])
-
-                            self.count_file("sprite", file_name, file_composite)
-
-
-        @timer
         def process_files(self):
             """
             Обрабатывает файлы мода.
@@ -282,32 +513,28 @@ init -1498 python: # TODO добавить синтаксический саха
             Если write_into_file равно True, вместо инициализации записывает ресурсы мода в отдельный файл. Для дальнейшей инициализации ресурсов мода из файла необходимо перезагрузить БЛ.
             """
             if self.write_into_file:
-                with builtins.open(self.modID + "/" + self.modID + "_assets.txt", "w+") as log_file:
+                with builtins.open(self.modPath + "/autoinit_assets.rpy", "w") as log_file:
                     log_file.write("init python:\n    ")
                     for type, file_name, file in self.modFiles:
                         if type == "sound":
-                            log_file.write("%s = \"%s\"\n    " % (file_name.strip() + self.modPostfix, file))
+                            log_file.write("%s = \"%s\"\n    " % (file_name, file))
                         elif type == "image":
-                            log_file.write("renpy.image(\"%s\", \"%s\")\n    " % (file_name.strip() + self.modPostfix, file))
+                            log_file.write("renpy.image(\"%s\", \"%s\")\n    " % (file_name, file))
                         if type == "sprite":
-                            log_file.write("renpy.image(\"%s\", %s)\n    " % (file_name.strip(), file))
+                            log_file.write("renpy.image(\"%s\", %s)\n    " % (file_name, file))
             else:
                 for type, file_name, file in self.modFiles:
                     if type == "sound":
-                        globals()[file_name.strip() + self.modPostfix] = file
+                        globals()[file_name] = file
                     elif type == "image":
-                        renpy.image(file_name.strip() + self.modPostfix, file)
+                        renpy.image(file_name, file)
                     if type == "sprite":
-                        renpy.image(file_name.strip(), eval(file))
+                        renpy.image(file_name, eval(file))
         @timer
         def initialize(self):
             """
             Инициализация ресурсов мода
             """
-            pass
             self.process_audio()
             self.process_images()
-            #self.process_sprites()
-            #self.process_sprites_general()
             self.process_files()
-
