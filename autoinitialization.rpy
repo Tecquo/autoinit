@@ -31,34 +31,74 @@ init python early:
                     если равно True, вместо инициализации записывает ресурсы мода в отдельный файл. Для дальнейшей инициализации ресурсов мода из файла необходимо перезагрузить БЛ.
                     если равно False, ресурсы мода инициализируются в момент загрузки БЛ.
             """
+
             self.modID = modID
             self.modPostfix = ("_" + modPostfix if modPostfix else "")
             self.modFiles = []
             self.write_into_file = write_into_file
             # кэширование файлов и директорий RenPy, чтобы не вызывать renpy.list_files() и renpy.loader.listdirfiles() каждый раз
+            # да, как оказалось, это сильно сказывается на производительности
             try:
                 self.renpyFiles = list(renpy.list_files())
                 self.renpyDirs = list(renpy.loader.listdirfiles(False))
             except Exception as e:
                 self.renpyFiles = []
                 self.renpyDirs = []
-                renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: Error caching RenPy files/dirs: {}".format(e))
+                self.error("Error caching RenPy files/dirs: {}".format(e))
             self.modPath = self.process_mod_path()
             self.modImagesPath = self.process_images_path()
             self.modDist = self.process_distances()
 
-            try:
-                with builtins.open(self.modID + "Logger.txt", "w+") as logger:
-                    logger.write(self.modID.upper() + " AUTOINITIALIZATION\n")
-            except Exception as e:
-                renpy.error(self.modID.upper() + " AUTOINITIALIZATION LOGGER ERROR: {}".format(e))
+            self.check_class_name()
+            self.check_duplicate()
 
-            if not(self.__class__.__name__.endswith(self.modID) or self.__class__.__name__.startswith(self.modID)):
-                renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: The auto-initialization class name must be unique and contain the mod root folder name")
+            self.logger_create()
 
             self.initialize()
 
-        #region Функции-аналоги с отловом ошибок с заменой "\\" на "/" для RenPy
+        def check_duplicate(self):
+            # Проверка на дублирование: класс с таким именем уже объявлен или объект уже создан
+            try:
+                registry = getattr(renpy.store, "_autoinit_registry", None)
+                if registry is None:
+                    registry = {"class_name_to_class_obj": {}, "initialized_class_names": set()}
+                    setattr(renpy.store, "_autoinit_registry", registry)
+
+                class_name = self.__class__.__name__
+
+                if class_name in registry.get("initialized_class_names", set()):
+                    self.error("Instance of '{}' already exists. Rename the class (change postfix).".format(class_name))
+
+                existing_cls = registry.get("class_name_to_class_obj", {}).get(class_name)
+                if existing_cls is not None and existing_cls is not self.__class__:
+                    self.error("Duplicate class name '{}' detected from another file. Rename the class postfix to include your mod folder name.".format(class_name))
+
+                registry["class_name_to_class_obj"][class_name] = self.__class__
+            except Exception as e:
+                self.error("Duplicate-name guard failed: {}".format(e))
+
+        def record_instance(self):
+            # Помечаем успешное создание объекта класса, чтобы запретить повторные инстансы того же имени
+            try:
+                registry = getattr(renpy.store, "_autoinit_registry", None)
+                if registry is not None:
+                    registry_class_name = getattr(renpy.store, "_autoinit_registry['initialized_class_names']", None)
+                    if not registry_class_name:
+                        registry.setdefault("initialized_class_names", set()).add(self.__class__.__name__)
+                    else:
+                        registry.add(self.__class__.__name__)
+                    
+            except Exception as e:
+                self.error("Failed to record instance creation: {}".format(e))
+
+        def check_class_name(self):
+            if not(self.__class__.__name__.endswith(self.modID) or self.__class__.__name__.startswith(self.modID)):
+                self.error("The auto-initialization class name ({}) must be unique and contain the mod root folder name".format(self.__class__.__name__))
+
+        def error(self, txt):
+            renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: {}".format(txt))
+
+        #region Функции-аналоги с отловом ошибок и с заменой "\\" на "/" для RenPy
         def _join_path(self, *args):
             return os.path.join(*args).replace(os.sep, "/")
 
@@ -66,14 +106,14 @@ init python early:
             try:
                 return os.path.isfile(path)
             except Exception as e:
-                renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: Error checking if file '{}': {}".format(path, e))
+                self.error("Error checking if file '{}': {}".format(path, e))
                 return False
 
         def _listdir(self, path):
             try:
                 return os.listdir(path)
             except Exception as e:
-                renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: Error listing directory '{}': {}".format(path, e))
+                self.error("Error listing directory '{}': {}".format(path, e))
                 return []
 
         def _walk(self, path):
@@ -81,23 +121,32 @@ init python early:
                 for root, dirs, files in os.walk(path):
                     yield root, dirs, files
             except Exception as e:
-                renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: Error walking directory '{}': {}".format(path, e))
+                self.error("Error walking directory '{}': {}".format(path, e))
                 return
 
         def _relpath(self, path, base):
             try:
                 return os.path.relpath(path, base).replace(os.sep, "/")
             except Exception as e:
-                renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: Error getting relative path from '{}' to '{}': {}".format(base, path, e))
+                self.error("Error getting relative path from '{}' to '{}': {}".format(base, path, e))
                 return path
-        #endregion Функции-аналоги с отловом ошибок с заменой "\\" на "/" для RenPy
+        #endregion Функции-аналоги с отловом ошибок и с заменой "\\" на "/" для RenPy
 
+        def logger_create(self):
+            if renpy.windows:
+                try:
+                    with builtins.open(self.modID + "Logger.txt", "w+") as logger:
+                        logger.write(self.modID.upper() + " AUTOINITIALIZATION\n")
+                except Exception as e:
+                    self.error("Error while trying to create logger: {}".format(e))
+        
         def logger_write(self, txt):
-            try:
-                with builtins.open(self.modID + "Logger.txt", "a+") as logger:
-                    logger.write(txt + "\n")
-            except Exception as e:
-                renpy.error(self.modID.upper() + " AUTOINITIALIZATION LOGGER ERROR: {}".format(e))
+            if renpy.windows:
+                try:
+                    with builtins.open(self.modID + "Logger.txt", "a+") as logger:
+                        logger.write(txt + "\n")
+                except Exception as e:
+                    self.error("Error while trying to write into logger: {}".format(e))
 
         def timer(func):
             def wrapper(self, *args, **kwargs):
@@ -533,8 +582,9 @@ init python early:
         @timer
         def initialize(self):
             """
-            Инициализация ресурсов мода
+            Инициализация ресурсов мода и запись создания объекта класса
             """
             self.process_audio()
             self.process_images()
             self.process_files()
+            self.record_instance()
