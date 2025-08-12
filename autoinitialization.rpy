@@ -223,6 +223,15 @@ init python early:
 
         @timer
         def process_audio(self):
+            """
+            Обрабатывает аудио. Поддерживает расширения (".wav", ".mp2", ".mp3", ".ogg", ".opus")
+
+            Имя аудио для вызова будет в формате:
+            [имя][_постфикс]
+
+            Пример:
+            newmusic_mymod
+            """
             audio_extensions = {".wav", ".mp2", ".mp3", ".ogg", ".opus"}
             for file in self.renpyFiles:
                 if self.modID in file:
@@ -230,12 +239,40 @@ init python early:
                     if file.endswith(tuple(audio_extensions)):
                         self.count_file("sound", file_name, file)
 
+        def process_font(self):
+            """
+            Обрабатывает шрифты. Поддерживает расширения (".ttf", ".otf")
+
+            Имя шрифта для вызова будет в формате:
+            [имя][_постфикс]
+
+            Пример:
+            newfont_rvp
+            """
+            font_extensions = {".ttf", ".otf"}
+            for file in renpy.list_files():
+                if self.modID in file:
+                    file_name = os.path.splitext(os.path.basename(file))[0] + self.modPostfix
+                    if file.endswith(tuple(font_extensions)):
+                        self.count_file("font", file_name, file)
+
         def _process_image_file(self, file_path, image_name):
             rel_path = self._relpath(file_path, self.renpyDirs[0][0])
             self.count_file("image", image_name, rel_path)
 
         @timer
         def process_images(self):
+            """
+            Обрабатывает изображения. Поддерживает изображения в подпапках.
+
+            Имя изображения для вызова будет в формате:
+            [папка] [подпапка] [имя][_постфикс]
+
+            Пример:
+            bg background_mymod
+            bg subfolder background_mymod
+            bg subfolder subsubfolder background_mymod
+            """
             for folder in self._listdir(self.modImagesPath):
                 path = os.path.join(self.modImagesPath, folder).replace(os.sep, "/")
                 if self._isfile(path):
@@ -507,10 +544,10 @@ init python early:
             и любые другие комбинации.
 
             Пример:
-            dv
-            dv normal
-            dv normal sport
-            dv normal sport jewelry
+            dv_mymod
+            dv_mymod normal
+            dv_mymod normal sport
+            dv_mymod normal sport jewelry
             """
             for dist in os.listdir(path):
                 who_path = os.path.join(path, dist).replace(os.sep, "/")
@@ -567,6 +604,8 @@ init python early:
                     for type, file_name, file in self.modFiles:
                         if type == "sound":
                             log_file.write("%s = \"%s\"\n    " % (file_name, file))
+                        elif type == "font":
+                            log_file.write("%s = \"%s\"\n    " % (file_name, file))
                         elif type == "image":
                             log_file.write("renpy.image(\"%s\", \"%s\")\n    " % (file_name, file))
                         if type == "sprite":
@@ -574,6 +613,8 @@ init python early:
             else:
                 for type, file_name, file in self.modFiles:
                     if type == "sound":
+                        globals()[file_name] = file
+                    elif type == "font":
                         globals()[file_name] = file
                     elif type == "image":
                         renpy.image(file_name, file)
@@ -585,6 +626,7 @@ init python early:
             Инициализация ресурсов мода и запись создания объекта класса
             """
             self.process_audio()
+            self.process_font()
             self.process_images()
             self.process_files()
             self.record_instance()
