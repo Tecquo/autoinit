@@ -1,4 +1,4 @@
-init python early:
+init -1500 python:
     import time
     import builtins
     import os
@@ -6,36 +6,39 @@ init python early:
     class autoInitialization_autoinit:
         """
         Класс для автоматической инициализации файлов мода.
-        Инициализирует аудио и изображения (включая спрайты).
-
-        Параметры класса:
-
-            :param modID: str
-                название корневой папки Вашего мода
-            :param modPostfix: str, optional, :default value: ""
-                опциональный параметр для добавления постфикса к названиям объявлённых ресурсов.
-            :param write_into_file: boolean, optional, :default value: False
-                если равно True, вместо инициализации записывает ресурсы мода в отдельный файл. Для дальнейшей инициализации ресурсов мода из файла необходимо перезагрузить БЛ.
-                если равно False, ресурсы мода инициализируются в момент загрузки БЛ.
+        Инициализирует аудио, шрифты и изображения (включая спрайты).
         """
 
-        def __init__(self, modID, modPostfix="", write_into_file=False):
+        def __init__(self, modID, modPostfix="", write_into_file=False, initialize_images=True, initialize_sprites=True, initialize_audio=True, initialize_fonts=True):
             """
             Параметры класса:
 
                 :param modID: str
                     название корневой папки Вашего мода
                 :param modPostfix: str, optional, :default value: ""
-                    опциональный параметр для добавления постфикса к названиям объявлённых ресурсов.
+                    постфикс, добавляемый к именам объявлённых ресурсов.
                 :param write_into_file: boolean, optional, :default value: False
-                    если равно True, вместо инициализации записывает ресурсы мода в отдельный файл. Для дальнейшей инициализации ресурсов мода из файла необходимо перезагрузить БЛ.
-                    если равно False, ресурсы мода инициализируются в момент загрузки БЛ.
+                    если True — вместо немедленной инициализации записывает ресурсы мода
+                    в файл `autoinit_assets.rpy`; затем потребуется перезагрузка БЛ.
+                    если False — ресурсы мода инициализируются сразу при загрузке БЛ.
+                :param initialize_images: boolean, optional, :default value: True
+                    включить обработку обычных изображений из `images/` (кроме `images/sprites`).
+                :param initialize_sprites: boolean, optional, :default value: True
+                    включить обработку спрайтов из `images/sprites` и их комбинаций.
+                :param initialize_audio: boolean, optional, :default value: True
+                    включить обработку аудио-файлов (.wav, .mp2, .mp3, .ogg, .opus).
+                :param initialize_fonts: boolean, optional, :default value: True
+                    включить обработку шрифтов (.ttf, .otf).
             """
 
             self.modID = modID
             self.modPostfix = ("_" + modPostfix if modPostfix else "")
             self.modFiles = []
             self.write_into_file = write_into_file
+            self.initialize_images = initialize_images
+            self.initialize_sprites = initialize_sprites
+            self.initialize_audio = initialize_audio
+            self.initialize_fonts = initialize_fonts
             # кэширование файлов и директорий RenPy, чтобы не вызывать renpy.list_files() и renpy.loader.listdirfiles() каждый раз
             # да, как оказалось, это сильно сказывается на производительности
             try:
@@ -238,8 +241,8 @@ init python early:
                     file_name = os.path.splitext(os.path.basename(file))[0] + self.modPostfix
                     if file.endswith(tuple(audio_extensions)):
                         self.count_file("sound", file_name, file)
-
-        def process_font(self):
+        @timer
+        def process_fonts(self):
             """
             Обрабатывает шрифты. Поддерживает расширения (".ttf", ".otf")
 
@@ -247,7 +250,7 @@ init python early:
             [имя][_постфикс]
 
             Пример:
-            newfont_rvp
+            newfont_mymod
             """
             font_extensions = {".ttf", ".otf"}
             for file in renpy.list_files():
@@ -256,7 +259,8 @@ init python early:
                     if file.endswith(tuple(font_extensions)):
                         self.count_file("font", file_name, file)
 
-        def _process_image_file(self, file_path, image_name):
+        @timer
+        def process_image(self, file_path, image_name):
             rel_path = self._relpath(file_path, self.renpyDirs[0][0])
             self.count_file("image", image_name, rel_path)
 
@@ -277,7 +281,7 @@ init python early:
                 path = os.path.join(self.modImagesPath, folder).replace(os.sep, "/")
                 if self._isfile(path):
                     image_name = os.path.splitext(os.path.basename(path))[0] + self.modPostfix
-                    self.count_file("image", image_name, path)
+                    self.process_image(path, image_name)
                 else:
                     if folder != 'sprites':
                         for root, dirs, files in self._walk(path):
@@ -292,8 +296,6 @@ init python early:
                                 image_name_with_folder = ' '.join(folder_structure).replace('/', '').replace('\\', '') + self.modPostfix
                                 image_path = os.path.relpath(image_path, self.renpyDirs[0][0]).replace(os.sep, "/")
                                 self.count_file("image", image_name_with_folder, image_path)
-                    else:
-                        self.process_sprites(path)
 
         def process_sprite_clothes_emo_acc(self, emo_l, clothes_l, acc_l, who, file_body, dist):
             """Обрабатывает спрайт [тело] [эмоция] [одежда] [аксессуар]"""
@@ -533,7 +535,7 @@ init python early:
             self.count_file("sprite", file_name, file)
 
         @timer
-        def process_sprites(self, path):
+        def process_sprites(self):
             """Обрабатывает спрайты и все их комбинации
 
             Имя спрайта для вызова будет в формате:
@@ -549,48 +551,51 @@ init python early:
             dv_mymod normal sport
             dv_mymod normal sport jewelry
             """
-            for dist in os.listdir(path):
-                who_path = os.path.join(path, dist).replace(os.sep, "/")
-                for who in os.listdir(who_path):
-                    who_path_num = os.path.join(who_path, who).replace(os.sep, "/")
-                    for numb in os.listdir(who_path_num):
-                        sprite_folders = os.listdir(os.path.join(who_path_num, numb).replace(os.sep, "/"))
+            for folder in self._listdir(self.modImagesPath):
+                if folder == "sprites":
+                    path = os.path.join(self.modImagesPath, folder).replace(os.sep, "/")
+                    for dist in os.listdir(path):
+                        who_path = os.path.join(path, dist).replace(os.sep, "/")
+                        for who in os.listdir(who_path):
+                            who_path_num = os.path.join(who_path, who).replace(os.sep, "/")
+                            for numb in os.listdir(who_path_num):
+                                sprite_folders = os.listdir(os.path.join(who_path_num, numb).replace(os.sep, "/"))
 
-                        for i in sprite_folders:
-                            if 'body' in i:
-                                file_body = "\"" + str(os.path.relpath(os.path.join(who_path_num, numb, i).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) + "\""
-                                break
-                        else:
-                            file_body = 'im.Alpha("images/misc/soviet_games.png", 0.0)' # Заглушка, если не нашли тело
+                                for i in sprite_folders:
+                                    if 'body' in i:
+                                        file_body = "\"" + str(os.path.relpath(os.path.join(who_path_num, numb, i).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) + "\""
+                                        break
+                                else:
+                                    file_body = 'im.Alpha("images/misc/soviet_games.png", 0.0)' # Заглушка, если не нашли тело
 
-                        clothes_l = []
-                        emo_l = []
-                        acc_l = []
+                                clothes_l = []
+                                emo_l = []
+                                acc_l = []
 
-                        if 'clothes' in sprite_folders:
-                            clothes_l = [(os.path.splitext(clothes)[0].split('_'+numb+"_", 1)[-1], os.path.relpath(os.path.join(who_path_num, numb, 'clothes', clothes).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) for clothes in os.listdir(os.path.join(who_path_num, numb, 'clothes'))]
+                                if 'clothes' in sprite_folders:
+                                    clothes_l = [(os.path.splitext(clothes)[0].split('_'+numb+"_", 1)[-1], os.path.relpath(os.path.join(who_path_num, numb, 'clothes', clothes).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) for clothes in os.listdir(os.path.join(who_path_num, numb, 'clothes'))]
 
-                        if 'emo' in sprite_folders:
-                            emo_l = [(os.path.splitext(emo)[0].split('_'+numb+"_", 1)[-1], os.path.relpath(os.path.join(who_path_num, numb, 'emo', emo).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) for emo in os.listdir(os.path.join(who_path_num, numb, 'emo'))]
+                                if 'emo' in sprite_folders:
+                                    emo_l = [(os.path.splitext(emo)[0].split('_'+numb+"_", 1)[-1], os.path.relpath(os.path.join(who_path_num, numb, 'emo', emo).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) for emo in os.listdir(os.path.join(who_path_num, numb, 'emo'))]
 
-                        if 'acc' in sprite_folders:
-                            acc_l = [(os.path.splitext(acc)[0].split('_'+numb+"_", 1)[-1], os.path.relpath(os.path.join(who_path_num, numb, 'acc', acc).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) for acc in os.listdir(os.path.join(who_path_num, numb, 'acc'))]
+                                if 'acc' in sprite_folders:
+                                    acc_l = [(os.path.splitext(acc)[0].split('_'+numb+"_", 1)[-1], os.path.relpath(os.path.join(who_path_num, numb, 'acc', acc).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) for acc in os.listdir(os.path.join(who_path_num, numb, 'acc'))]
 
-                        self.process_sprite(who, file_body, dist)
-                        if clothes_l and emo_l and acc_l:
-                            self.process_sprite_clothes_emo_acc(emo_l, clothes_l, acc_l, who, file_body, dist)
-                        elif clothes_l and emo_l:
-                            self.process_sprite_clothes_emo(emo_l, clothes_l, who, file_body, dist)
-                        elif clothes_l and acc_l:
-                            self.process_sprite_clothes_acc(clothes_l, acc_l, who, file_body, dist)
-                        elif emo_l and acc_l:
-                            self.process_sprite_emo_acc(emo_l, acc_l,  who, file_body, dist)
-                        elif clothes_l:
-                            self.process_sprite_clothes(clothes_l, who, file_body, dist)
-                        elif acc_l:
-                            self.process_sprite_acc(acc_l, who, file_body, dist)
-                        elif emo_l:
-                            self.process_sprite_emo(emo_l, who, file_body, dist)
+                                self.process_sprite(who, file_body, dist)
+                                if clothes_l and emo_l and acc_l:
+                                    self.process_sprite_clothes_emo_acc(emo_l, clothes_l, acc_l, who, file_body, dist)
+                                elif clothes_l and emo_l:
+                                    self.process_sprite_clothes_emo(emo_l, clothes_l, who, file_body, dist)
+                                elif clothes_l and acc_l:
+                                    self.process_sprite_clothes_acc(clothes_l, acc_l, who, file_body, dist)
+                                elif emo_l and acc_l:
+                                    self.process_sprite_emo_acc(emo_l, acc_l,  who, file_body, dist)
+                                elif clothes_l:
+                                    self.process_sprite_clothes(clothes_l, who, file_body, dist)
+                                elif acc_l:
+                                    self.process_sprite_acc(acc_l, who, file_body, dist)
+                                elif emo_l:
+                                    self.process_sprite_emo(emo_l, who, file_body, dist)
 
         def process_files(self):
             """
@@ -600,22 +605,22 @@ init python early:
             """
             if self.write_into_file:
                 with builtins.open(self.modPath + "/autoinit_assets.rpy", "w") as log_file:
-                    log_file.write("init python:\n    ")
+                    log_file.write("init -1499:\n    ")
                     for type, file_name, file in self.modFiles:
                         if type == "sound":
-                            log_file.write("%s = \"%s\"\n    " % (file_name, file))
+                            log_file.write("$ %s = \"%s\"\n    " % (file_name, file))
                         elif type == "font":
-                            log_file.write("%s = \"%s\"\n    " % (file_name, file))
+                            log_file.write("$ %s = \"%s\"\n    " % (file_name, file))
                         elif type == "image":
-                            log_file.write("renpy.image(\"%s\", \"%s\")\n    " % (file_name, file))
+                            log_file.write("image %s = \"%s\"\n    " % (file_name, file))
                         if type == "sprite":
-                            log_file.write("renpy.image(\"%s\", %s)\n    " % (file_name, file))
+                            log_file.write("image %s = %s\n    " % (file_name, file.strip()))
             else:
                 for type, file_name, file in self.modFiles:
                     if type == "sound":
-                        globals()[file_name] = file
+                        setattr(store, file_name, file)
                     elif type == "font":
-                        globals()[file_name] = file
+                        setattr(store, file_name, file)
                     elif type == "image":
                         renpy.image(file_name, file)
                     if type == "sprite":
@@ -625,8 +630,13 @@ init python early:
             """
             Инициализация ресурсов мода и запись создания объекта класса
             """
-            self.process_audio()
-            self.process_font()
-            self.process_images()
+            if self.initialize_audio:
+                self.process_audio()
+            if self.initialize_fonts:
+                self.process_fonts()
+            if self.initialize_images:
+                self.process_images()
+            if self.initialize_sprites:
+                self.process_sprites()
             self.process_files()
             self.record_instance()
