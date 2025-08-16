@@ -1,6 +1,6 @@
 init:
     $ mods["autoinit_label"] = "Авто инит"
-    $ autoinitialization_autoinit = autoInitialization_autoinit("autoinit", "mymod", write_into_file=True)
+    $ autoinitialization_autoinit = autoInitialization_autoinit("autoinit", "mymod", write_into_file=False)
 
 label autoinit_label:
 
@@ -57,5 +57,17 @@ label autoinit_label:
     show mt_mymod intro jewelry as mt8:
         subpixel True zpos -477.0 pos (0.68, 486) 
     "Комбинации спрайтов"
+
+    $ sunset_time()
+    $ persistent.sprite_time = "sunset"
+    "Вечер"
+
+    $ night_time()
+    $ persistent.sprite_time = "night"
+    "Ночь"
+
+    $ day_time()
+    $ persistent.sprite_time = "day"
+    "День"
 
     return
