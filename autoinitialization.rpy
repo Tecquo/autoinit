@@ -497,15 +497,16 @@ init -1500 python:
         @timer
         def initialize(self):
             """
-            Инициализация ресурсов мода и запись создания объекта класса
+            Инициализация ресурсов мода и запись создания объекта класса, если не имеем уже созданный файл с объявлёнными файлами.
             """
-            if self.initialize_audio:
-                self.process_audio()
-            if self.initialize_fonts:
-                self.process_fonts()
-            if self.initialize_images:
-                self.process_images()
-            if self.initialize_sprites:
-                self.process_sprites()
-            self.process_files()
+            if not (os.path.exists(self.modPath + "/autoinit_assets.rpy")):
+                if self.initialize_audio:
+                    self.process_audio()
+                if self.initialize_fonts:
+                    self.process_fonts()
+                if self.initialize_images:
+                    self.process_images()
+                if self.initialize_sprites:
+                    self.process_sprites()
+                self.process_files()
             self.record_instance()
