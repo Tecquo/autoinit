@@ -51,6 +51,8 @@ init -1500 python:
             self.modPath = self.process_mod_path()
             self.modImagesPath = self.process_images_path()
             self.modDist = self.process_distances()
+            self.modSpritesTints =   [("sunset", "TintMatrix(Color(hls=(0.94, 0.82, 1.0)))"),
+                                    ("night", "TintMatrix(Color(hls=(0.63, 0.78, 0.82)))")]
 
             self.check_class_name()
             self.check_duplicate()
@@ -62,10 +64,10 @@ init -1500 python:
         def check_duplicate(self):
             # Проверка на дублирование: класс с таким именем уже объявлен или объект уже создан
             try:
-                registry = getattr(renpy.store, "_autoinit_registry", None)
+                registry = getattr(store, "_autoinit_registry", None)
                 if registry is None:
                     registry = {"class_name_to_class_obj": {}, "initialized_class_names": set()}
-                    setattr(renpy.store, "_autoinit_registry", registry)
+                    setattr(store, "_autoinit_registry", registry)
 
                 class_name = self.__class__.__name__
 
@@ -83,9 +85,9 @@ init -1500 python:
         def record_instance(self):
             # Помечаем успешное создание объекта класса, чтобы запретить повторные инстансы того же имени
             try:
-                registry = getattr(renpy.store, "_autoinit_registry", None)
+                registry = getattr(store, "_autoinit_registry", None)
                 if registry is not None:
-                    registry_class_name = getattr(renpy.store, "_autoinit_registry['initialized_class_names']", None)
+                    registry_class_name = getattr(store, "_autoinit_registry['initialized_class_names']", None)
                     if not registry_class_name:
                         registry.setdefault("initialized_class_names", set()).add(self.__class__.__name__)
                     else:
@@ -297,38 +299,44 @@ init -1500 python:
                                 image_path = os.path.relpath(image_path, self.renpyDirs[0][0]).replace(os.sep, "/")
                                 self.count_file("image", image_name_with_folder, image_path)
 
+        def build_sprite(self, composite_size, body_expr, extra_layer_paths):
+            """
+            Собирает big-ass строчку для объявления спрайта, учитывает тинты, дистанции, и вариации спрайта.
+            """
+            try:
+                layers_parts = ["(0, 0), {}".format(body_expr)]
+                for layer_path in extra_layer_paths:
+                    layers_parts.append('(0, 0), "{}"'.format(layer_path))
+                layers_joined = ",\n                                            ".join(layers_parts)
+
+                sprite_tints = ""
+                for tint_name, tint in self.modSpritesTints:
+                    sprite_tints += """
+                    "persistent.sprite_time=='{tint_name}'",
+                    Transform(Composite({size},
+                                                {layers}),
+                                    matrixcolor={tint}
+                                ),
+                    """.format(tint_name=tint_name, tint=tint, size=composite_size, layers=layers_joined)
+                sprite = """
+                    ConditionSwitch(
+                        {tints}
+                        True,
+                        Composite({size},
+                                    {layers})
+                    )
+                    """.format(tints=sprite_tints, size=composite_size, layers=layers_joined)
+                return sprite
+            except Exception as e:
+                return self.error("Failed to build {} sprite: {}".format(body_expr, e))
+
         def process_sprite_clothes_emo_acc(self, emo_l, clothes_l, acc_l, who, file_body, dist):
             """Обрабатывает спрайт [тело] [эмоция] [одежда] [аксессуар]"""
             for emotion in emo_l:
                 for clothes in clothes_l:
                     for acc in acc_l:
                         file_name = who + self.modPostfix + ' ' + emotion[0] + ' ' + clothes[0] + ' ' + acc[0] + ' ' + self.modDist[dist][0]
-                        file = """
-                            ConditionSwitch(
-                                "persistent.sprite_time=='sunset'",
-                                im.MatrixColor(im.Composite({0},
-                                                            (0, 0), {1},
-                                                            (0, 0), "{2}",
-                                                            (0, 0), "{3}",
-                                                            (0, 0), "{4}"),
-                                                im.matrix.tint(0.94, 0.82, 1.0)
-                                            ),
-                                "persistent.sprite_time=='night'",
-                                im.MatrixColor(im.Composite({0},
-                                                            (0, 0), {1},
-                                                            (0, 0), "{2}",
-                                                            (0, 0), "{3}",
-                                                            (0, 0), "{4}"),
-                                                im.matrix.tint(0.63, 0.78, 0.82)
-                                            ),
-                                True,
-                                im.Composite({0},
-                                            (0, 0), {1},
-                                            (0, 0), "{2}",
-                                            (0, 0), "{3}",
-                                            (0, 0), "{4}")
-                            )
-                        """.format(self.modDist[dist][1], file_body, clothes[1], emotion[1], acc[1])
+                        file = self.build_sprite(self.modDist[dist][1], file_body, [clothes[1], emotion[1], acc[1]])
                         self.count_file("sprite", file_name, file)
 
             self.process_sprite_clothes_emo(emo_l, clothes_l, who, file_body, dist)
@@ -343,29 +351,7 @@ init -1500 python:
             for clothes in clothes_l:
                 for emotion in emo_l:
                     file_name = who + self.modPostfix + ' ' + emotion[0] + ' ' + clothes[0] + ' ' + self.modDist[dist][0]
-                    file = """
-                        ConditionSwitch(
-                            "persistent.sprite_time=='sunset'",
-                            im.MatrixColor(im.Composite({0},
-                                                        (0, 0), {1},
-                                                        (0, 0), "{2}",
-                                                        (0, 0), "{3}"),
-                                            im.matrix.tint(0.94, 0.82, 1.0)
-                                        ),
-                            "persistent.sprite_time=='night'",
-                            im.MatrixColor(im.Composite({0},
-                                                        (0, 0), {1},
-                                                        (0, 0), "{2}",
-                                                        (0, 0), "{3}"),
-                                            im.matrix.tint(0.63, 0.78, 0.82)
-                                        ),
-                            True,
-                            im.Composite({0},
-                                        (0, 0), {1},
-                                        (0, 0), "{2}",
-                                        (0, 0), "{3}")
-                        )
-                    """.format(self.modDist[dist][1], file_body, clothes[1], emotion[1])
+                    file = self.build_sprite(self.modDist[dist][1], file_body, [clothes[1], emotion[1]])
                     self.count_file("sprite", file_name, file)
             self.process_sprite_clothes(clothes_l, who, file_body, dist)
             self.process_sprite_emo(emo_l, who, file_body, dist)
@@ -375,29 +361,7 @@ init -1500 python:
             for clothes in clothes_l:
                 for acc in acc_l:
                     file_name = who + self.modPostfix + ' ' + clothes[0] + ' ' + acc[0] + ' ' + self.modDist[dist][0]
-                    file = """
-                        ConditionSwitch(
-                            "persistent.sprite_time=='sunset'",
-                            im.MatrixColor(im.Composite({0},
-                                                        (0, 0), {1},
-                                                        (0, 0), "{2}",
-                                                        (0, 0), "{3}"),
-                                            im.matrix.tint(0.94, 0.82, 1.0)
-                                        ),
-                            "persistent.sprite_time=='night'",
-                            im.MatrixColor(im.Composite({0},
-                                                        (0, 0), {1},
-                                                        (0, 0), "{2}",
-                                                        (0, 0), "{3}"),
-                                            im.matrix.tint(0.63, 0.78, 0.82)
-                                        ),
-                            True,
-                            im.Composite({0},
-                                        (0, 0), {1},
-                                        (0, 0), "{2}",
-                                        (0, 0), "{3}")
-                        )
-                    """.format(self.modDist[dist][1], file_body, clothes[1], acc[1])
+                    file = self.build_sprite(self.modDist[dist][1], file_body, [clothes[1], acc[1]])
                     self.count_file("sprite", file_name, file)
             self.process_sprite_clothes(clothes_l, who, file_body, dist)
             self.process_sprite_acc(acc_l, who, file_body, dist)
@@ -407,29 +371,7 @@ init -1500 python:
             for emotion in emo_l:
                 for acc in acc_l:
                     file_name = who + self.modPostfix + ' ' + emotion[0] + ' ' + acc[0] + ' ' + self.modDist[dist][0]
-                    file = """
-                        ConditionSwitch(
-                            "persistent.sprite_time=='sunset'",
-                            im.MatrixColor(im.Composite({0},
-                                                        (0, 0), {1},
-                                                        (0, 0), "{2}",
-                                                        (0, 0), "{3}"),
-                                            im.matrix.tint(0.94, 0.82, 1.0)
-                                        ),
-                            "persistent.sprite_time=='night'",
-                            im.MatrixColor(im.Composite({0},
-                                                        (0, 0), {1},
-                                                        (0, 0), "{2}",
-                                                        (0, 0), "{3}"),
-                                            im.matrix.tint(0.63, 0.78, 0.82)
-                                        ),
-                            True,
-                            im.Composite({0},
-                                        (0, 0), {1},
-                                        (0, 0), "{2}",
-                                        (0, 0), "{3}")
-                        )
-                    """.format(self.modDist[dist][1], file_body, emotion[1], acc[1])
+                    file = self.build_sprite(self.modDist[dist][1], file_body, [emotion[1], acc[1]])
                     self.count_file("sprite", file_name, file)
             self.process_sprite_emo(emo_l, who, file_body, dist)
             self.process_sprite_acc(acc_l, who, file_body, dist)
@@ -438,100 +380,27 @@ init -1500 python:
             """Обрабатывает спрайт [тело] [одежда]"""
             for clothes in clothes_l:
                 file_name = who + self.modPostfix + ' ' + clothes[0] + ' ' + self.modDist[dist][0]
-                file = """
-                    ConditionSwitch(
-                        "persistent.sprite_time=='sunset'",
-                        im.MatrixColor(im.Composite({0},
-                                                    (0, 0), {1},
-                                                    (0, 0), "{2}"),
-                                        im.matrix.tint(0.94, 0.82, 1.0)
-                                    ),
-                        "persistent.sprite_time=='night'",
-                        im.MatrixColor(im.Composite({0},
-                                                    (0, 0), {1},
-                                                    (0, 0), "{2}"),
-                                        im.matrix.tint(0.63, 0.78, 0.82)
-                                    ),
-                        True,
-                        im.Composite({0},
-                                    (0, 0), {1},
-                                    (0, 0), "{2}")
-                    )
-                """.format(self.modDist[dist][1], file_body, clothes[1])
+                file = self.build_sprite(self.modDist[dist][1], file_body, [clothes[1]])
                 self.count_file("sprite", file_name, file)
 
         def process_sprite_acc(self, acc_l, who, file_body, dist):
             """Обрабатывает спрайт [тело] [аксессуар]"""
             for acc in acc_l:
                 file_name = who + self.modPostfix + ' ' + acc[0] + ' ' + self.modDist[dist][0]
-                file = """
-                    ConditionSwitch(
-                        "persistent.sprite_time=='sunset'",
-                        im.MatrixColor(im.Composite({0},
-                                                    (0, 0), {1},
-                                                    (0, 0), "{2}"),
-                                        im.matrix.tint(0.94, 0.82, 1.0)
-                                    ),
-                        "persistent.sprite_time=='night'",
-                        im.MatrixColor(im.Composite({0},
-                                                    (0, 0), {1},
-                                                    (0, 0), "{2}"),
-                                        im.matrix.tint(0.63, 0.78, 0.82)
-                                    ),
-                        True,
-                        im.Composite({0},
-                                    (0, 0), {1},
-                                    (0, 0), "{2}")
-                    )
-                """.format(self.modDist[dist][1], file_body, acc[1])
+                file = self.build_sprite(self.modDist[dist][1], file_body, [acc[1]])
                 self.count_file("sprite", file_name, file)
 
         def process_sprite_emo(self, emo_l, who, file_body, dist):
             """Обрабатывает спрайт [тело] [эмоция]"""
             for emotion in emo_l:
                 file_name = who + self.modPostfix + ' ' + emotion[0] + ' ' + self.modDist[dist][0]
-                file = """
-                    ConditionSwitch(
-                        "persistent.sprite_time=='sunset'",
-                        im.MatrixColor(im.Composite({0},
-                                                    (0, 0), {1},
-                                                    (0, 0), "{2}"),
-                                        im.matrix.tint(0.94, 0.82, 1.0)
-                                    ),
-                        "persistent.sprite_time=='night'",
-                        im.MatrixColor(im.Composite({0},
-                                                    (0, 0), {1},
-                                                    (0, 0), "{2}"),
-                                        im.matrix.tint(0.63, 0.78, 0.82)
-                                    ),
-                        True,
-                        im.Composite({0},
-                                    (0, 0), {1},
-                                    (0, 0), "{2}")
-                    )
-                """.format(self.modDist[dist][1], file_body, emotion[1])
+                file = self.build_sprite(self.modDist[dist][1], file_body, [emotion[1]])
                 self.count_file("sprite", file_name, file)
 
         def process_sprite(self, who, file_body, dist):
             """Обрабатывает спрайт [тело]"""
             file_name = "{}{} {}".format(who, self.modPostfix, self.modDist[dist][0])
-            file = """
-                ConditionSwitch(
-                    "persistent.sprite_time=='sunset'",
-                    im.MatrixColor(im.Composite({0},
-                                                (0, 0), {1}),
-                                    im.matrix.tint(0.94, 0.82, 1.0)
-                                ),
-                    "persistent.sprite_time=='night'",
-                    im.MatrixColor(im.Composite({0},
-                                                (0, 0), {1}),
-                                    im.matrix.tint(0.63, 0.78, 0.82)
-                                ),
-                    True,
-                    im.Composite({0},
-                                (0, 0), {1})
-                )
-            """.format(self.modDist[dist][1], file_body)
+            file = self.build_sprite(self.modDist[dist][1], file_body, [])
             self.count_file("sprite", file_name, file)
 
         @timer
@@ -628,15 +497,16 @@ init -1500 python:
         @timer
         def initialize(self):
             """
-            Инициализация ресурсов мода и запись создания объекта класса
+            Инициализация ресурсов мода и запись создания объекта класса, если не имеем уже созданный файл с объявлёнными файлами.
             """
-            if self.initialize_audio:
-                self.process_audio()
-            if self.initialize_fonts:
-                self.process_fonts()
-            if self.initialize_images:
-                self.process_images()
-            if self.initialize_sprites:
-                self.process_sprites()
-            self.process_files()
+            if not (os.path.exists(self.modPath + "/autoinit_assets.rpy")):
+                if self.initialize_audio:
+                    self.process_audio()
+                if self.initialize_fonts:
+                    self.process_fonts()
+                if self.initialize_images:
+                    self.process_images()
+                if self.initialize_sprites:
+                    self.process_sprites()
+                self.process_files()
             self.record_instance()
