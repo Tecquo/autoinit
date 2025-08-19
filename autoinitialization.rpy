@@ -5,54 +5,65 @@ init -1500 python:
 
     class autoInitialization_autoinit:
         """
-        Класс для автоматической инициализации файлов мода.
-        Инициализирует аудио, шрифты и изображения (включая спрайты).
+        Класс для автоматической инициализации ресурсов мода (изображения, спрайты, аудио, шрифты).
+        Сканирует структуру папок, инициализирует ресурсы мода.
         """
 
         def __init__(self, modID, modPostfix="", write_into_file=False, initialize_images=True, initialize_sprites=True, initialize_audio=True, initialize_fonts=True):
             """
-            Параметры класса:
-
-                :param modID: str
-                    название корневой папки Вашего мода
-                :param modPostfix: str, optional, :default value: ""
-                    постфикс, добавляемый к именам объявлённых ресурсов.
-                :param write_into_file: boolean, optional, :default value: False
-                    если True — вместо немедленной инициализации записывает ресурсы мода
-                    в файл `autoinit_assets.rpy`; затем потребуется перезагрузка БЛ.
-                    если False — ресурсы мода инициализируются сразу при загрузке БЛ.
-                :param initialize_images: boolean, optional, :default value: True
-                    включить обработку обычных изображений из `images/` (кроме `images/sprites`).
-                :param initialize_sprites: boolean, optional, :default value: True
-                    включить обработку спрайтов из `images/sprites` и их комбинаций.
-                :param initialize_audio: boolean, optional, :default value: True
-                    включить обработку аудио-файлов (.wav, .mp2, .mp3, .ogg, .opus).
-                :param initialize_fonts: boolean, optional, :default value: True
-                    включить обработку шрифтов (.ttf, .otf).
+            :param modID: str
+                имя корневой папки мода (обязательно)
+            :param modPostfix: str, optional, :default value: ""
+                постфикс к именам ресурсов (опционально)
+            :param write_into_file: boolean, optional, :default value: False
+                если True — вместо немедленной инициализации записывает ресурсы мода
+                в файл `autoinit_assets.rpy`; затем потребуется перезагрузка БЛ.
+                если False — ресурсы мода инициализируются сразу при загрузке БЛ.
+            :param initialize_images: boolean, optional, :default value: True
+                включить обработку обычных изображений (по умолчанию True)
+            :param initialize_sprites: boolean, optional, :default value: True
+                включить обработку спрайтов (по умолчанию True)
+            :param initialize_audio: boolean, optional, :default value: True
+                включить обработку аудио (по умолчанию True)
+            :param initialize_fonts: boolean, optional, :default value: True
+                включить обработку шрифтов (по умолчанию True)
             """
 
             self.modID = modID
             self.modPostfix = ("_" + modPostfix if modPostfix else "")
-            self.modFiles = []
+            
+            self.EXTENSIONS = {
+                "IMAGE": ('.png', '.jpg', '.jpeg', '.webp', '.gif'),
+                "AUDIO": (".wav", ".mp2", ".mp3", ".ogg", ".opus"),
+                "FONT": (".ttf", ".otf")
+            }
+            self.NAMES = {
+                "IMAGES_FOLDER": "images",
+                "SPRITES_FOLDER": "sprites",
+                "ASSETS": "autoinit_assets",
+                "LOGGER": "Logger"
+            }
+            self.SPRITE_TINTS = {
+                "sunset": "TintMatrix(Color(hls=(0.94, 0.82, 1.0)))",
+                "night": "TintMatrix(Color(hls=(0.63, 0.78, 0.82)))"
+            }
+
             self.write_into_file = write_into_file
             self.initialize_images = initialize_images
             self.initialize_sprites = initialize_sprites
             self.initialize_audio = initialize_audio
             self.initialize_fonts = initialize_fonts
-            # кэширование файлов и директорий RenPy, чтобы не вызывать renpy.list_files() и renpy.loader.listdirfiles() каждый раз
-            # да, как оказалось, это сильно сказывается на производительности
-            try:
-                self.renpyFiles = list(renpy.list_files())
-                self.renpyDirs = list(renpy.loader.listdirfiles(False))
-            except Exception as e:
-                self.renpyFiles = []
-                self.renpyDirs = []
-                self.error("Error caching RenPy files/dirs: {}".format(e))
-            self.modPath = self.process_mod_path()
-            self.modImagesPath = self.process_images_path()
+            
+            self.modFiles = self.cache_mod_files()
+            self.modReadyToInitFiles = []
+            
+            self.modPath = self.find_mod_path()
+            self.modImagesPath = self.modPath + "/" + self.NAMES["IMAGES_FOLDER"]
+            self.modSpritesPath = self.modImagesPath + "/" + self.NAMES["SPRITES_FOLDER"]
+            self.modAssetsPath = "game/" + self.modPath + "/" + self.NAMES["ASSETS"] + ".rpy" 
+            self.modLoggerPath = self.modID + self.NAMES["LOGGER"] + ".txt"
+
             self.modDist = self.process_distances()
-            self.modSpritesTints =   [("sunset", "TintMatrix(Color(hls=(0.94, 0.82, 1.0)))"),
-                                    ("night", "TintMatrix(Color(hls=(0.63, 0.78, 0.82)))")]
 
             self.check_class_name()
             self.check_duplicate()
@@ -60,9 +71,83 @@ init -1500 python:
             self.logger_create()
 
             self.initialize()
+        
+        #region Работа с путями
+        def get_rel_path(self, dir_path, path):
+            """Получаем относительный путь от path"""
+            try:
+                return dir_path[len(path):].strip("/")
+            except Exception as e:
+                self.error("Error while trying to get rel path from {} for {}: {}".format(dir_path, path, e))
 
+        def cache_mod_files(self):
+            """Прогоняем list_files и кэшируем файлы/директории, в которых есть имя корневой папки мода"""
+            try:
+                renpyFiles = renpy.list_files()
+                modFiles = {}
+                
+                for file_path in renpyFiles:
+                    if self.modID in file_path:
+                        dir_path = "/".join(file_path.split("/")[:-1])
+                        if dir_path not in modFiles:
+                            modFiles[dir_path] = []
+                        modFiles[dir_path].append(file_path)
+                
+                return modFiles
+            except Exception as e:
+                self.error("Error caching RenPy and mod files: {}".format(e))
+
+        def find_mod_path(self):
+            """Находит путь до папки мода."""
+            try:
+                for dir_path in self.modFiles:
+                    if self.modID in dir_path:
+                        path_parts = dir_path.split("/")
+                        if self.modID in path_parts:
+                            mod_index = path_parts.index(self.modID)
+                            return "/".join(path_parts[:mod_index + 1])
+            except Exception as e:
+                self.error("Could not find mod path for modID: {}\n{}".format(modID, e))
+                return None
+
+        def process_distances(self):
+            """
+            Строит названия дистанций по именам внутри sprites (для normal дистанции имя будет "", как в самом БЛ), ищет первое изображение в каждой из папок с дистанциями, получает размер изображения и добавляет в словарь
+
+            :return: dict
+
+            Пример возврата функции:
+            {
+                "far": {"far", (675, 1080)},
+                "normal": {"", (900, 1080)},
+                "close": {"close", (1125, 1080)},
+            }
+            """
+            try:
+                folder_names = {}
+                
+                for dir_path, files in self.modFiles.items():
+                    if self.modSpritesPath in dir_path and dir_path != self.modSpritesPath:
+                        relative_to_sprites = self.get_rel_path(dir_path, self.modSpritesPath)
+                        distance_name = relative_to_sprites.split("/")[0] if "/" in relative_to_sprites else relative_to_sprites
+                        if distance_name and distance_name not in folder_names:
+                            for file_path in files:
+                                if file_path.endswith(self.EXTENSIONS["IMAGE"]):
+                                    try:
+                                        image_size = renpy.image_size(file_path)
+                                        folder_names[distance_name] = (distance_name if distance_name != "normal" else "", image_size)
+                                        break
+                                    except:
+                                        continue
+                
+                return folder_names
+            except Exception as e:
+                self.error("Error while processing distances: {}".format(e))
+        #endregion
+
+        #region Проверки на дубликаты и ошибки
         def check_duplicate(self):
-            # Проверка на дублирование: класс с таким именем уже объявлен или объект уже создан
+            """Проверяем на дублированием класса/объекта класса с таким же именем"""
             try:
                 registry = getattr(store, "_autoinit_registry", None)
                 if registry is None:
@@ -80,67 +165,27 @@ init -1500 python:
 
                 registry["class_name_to_class_obj"][class_name] = self.__class__
             except Exception as e:
-                self.error("Duplicate-name guard failed: {}".format(e))
-
-        def record_instance(self):
-            # Помечаем успешное создание объекта класса, чтобы запретить повторные инстансы того же имени
-            try:
-                registry = getattr(store, "_autoinit_registry", None)
-                if registry is not None:
-                    registry_class_name = getattr(store, "_autoinit_registry['initialized_class_names']", None)
-                    if not registry_class_name:
-                        registry.setdefault("initialized_class_names", set()).add(self.__class__.__name__)
-                    else:
-                        registry.add(self.__class__.__name__)
-                    
-            except Exception as e:
-                self.error("Failed to record instance creation: {}".format(e))
+                self.error("Duplicate check failed: {}".format(e))
 
         def check_class_name(self):
             if not(self.__class__.__name__.endswith(self.modID) or self.__class__.__name__.startswith(self.modID)):
                 self.error("The auto-initialization class name ({}) must be unique and contain the mod root folder name".format(self.__class__.__name__))
 
-        def error(self, txt):
-            renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: {}".format(txt))
-
-        #region Функции-аналоги с отловом ошибок и с заменой "\\" на "/" для RenPy
-        def _join_path(self, *args):
-            return os.path.join(*args).replace(os.sep, "/")
-
-        def _isfile(self, path):
+        def record_instance(self):
+            """Помечаем успешное создание объекта класса, чтобы запретить повторные инстансы того же имени"""
             try:
-                return os.path.isfile(path)
+                registry = getattr(store, "_autoinit_registry", None)
+                if registry is not None:
+                    registry.setdefault("initialized_class_names", set()).add(self.__class__.__name__)
             except Exception as e:
-                self.error("Error checking if file '{}': {}".format(path, e))
-                return False
+                self.error("Failed to record instance creation: {}".format(e))
+        #endregion
 
-        def _listdir(self, path):
-            try:
-                return os.listdir(path)
-            except Exception as e:
-                self.error("Error listing directory '{}': {}".format(path, e))
-                return []
-
-        def _walk(self, path):
-            try:
-                for root, dirs, files in os.walk(path):
-                    yield root, dirs, files
-            except Exception as e:
-                self.error("Error walking directory '{}': {}".format(path, e))
-                return
-
-        def _relpath(self, path, base):
-            try:
-                return os.path.relpath(path, base).replace(os.sep, "/")
-            except Exception as e:
-                self.error("Error getting relative path from '{}' to '{}': {}".format(base, path, e))
-                return path
-        #endregion Функции-аналоги с отловом ошибок и с заменой "\\" на "/" для RenPy
-
+        #region Логгер
         def logger_create(self):
             if renpy.windows:
                 try:
-                    with builtins.open(self.modID + "Logger.txt", "w+") as logger:
+                    with builtins.open(self.modLoggerPath, "w+") as logger:
                         logger.write(self.modID.upper() + " AUTOINITIALIZATION\n")
                 except Exception as e:
                     self.error("Error while trying to create logger: {}".format(e))
@@ -148,12 +193,18 @@ init -1500 python:
         def logger_write(self, txt):
             if renpy.windows:
                 try:
-                    with builtins.open(self.modID + "Logger.txt", "a+") as logger:
+                    with builtins.open(self.modLoggerPath, "a+") as logger:
                         logger.write(txt + "\n")
                 except Exception as e:
                     self.error("Error while trying to write into logger: {}".format(e))
+        #endregion
+
+        def error(self, txt):
+            """Вызываем трейсбек с названием мода и уведомлении о ошибке с автоинитом"""
+            renpy.error(self.modID.upper() + " AUTOINITIALIZATION ERROR: {}".format(txt))
 
         def timer(func):
+            """Таймер для замера скоростки отработки функций"""
             def wrapper(self, *args, **kwargs):
                 start = time.time()
                 result = func(self, *args, **kwargs)
@@ -162,142 +213,53 @@ init -1500 python:
                 return result
             return wrapper
 
-        def count_file(self, type, file_name, file):
-            """
-            Добавляет название файла, сам файл и его тип в лист modFiles.
-
-            :param type: str
-                тип файла
-            :param file_name: srt
-                имя файла
-            :param file: str
-                путь до файла
-            """
-            self.modFiles.append([type, file_name, file])
-
-        def process_mod_path(self):
-            """
-            Находит путь до папки мода.
-
-            :return: str
-            """
-            for dir, fn in self.renpyDirs:
-                if self.modID in fn:
-                    return os.path.join(dir, self.modID).replace(os.sep, "/")
-                else:
-                    for root, dirs, files in os.walk(dir):
-                        if self.modID in dirs:
-                            return os.path.join(root, self.modID).replace(os.sep, "/")
-
-        def process_images_path(self):
-            """
-            Находит путь до папки изображений мода.
-
-            :return: str
-            """
-            return self._join_path(self.modPath, 'images')
-
-        def process_distances(self):
-            """
-            Находит путь до папки sprites, строит названия дистанций по именам внутри (для normal дистанции имя будет "", как в самом БЛ), ищет изображение в каждой из папок с дистанциями, получает размер изображения и добавляет в словарь
-
-            :return: dict
-
-            Пример возврата функции:
-            {
-                "far": {"far", (675, 1080)},
-                "normal": {"", (900, 1080)},
-                "close": {"close", (1125, 1080)},
+        def _get_sprite_parts(self, sprite_dir):
+            """Извлекает части спрайта из папки, если не находим тело как часть спрайта - ставим заглушку."""
+            parts = {
+                'body': None,
+                'clothes': [],
+                'emo': [],
+                'acc': []
             }
-            """
-            folder_names = {}
-            path = os.path.join(self.modImagesPath, "sprites")
-            for name in os.listdir(path):
-                full_path = os.path.join(path, name).replace(os.sep, "/")
-                if os.path.isdir(full_path):
-                    for root, dirs, files in os.walk(full_path):
-                        for file in files:
-                            relative_path = os.path.relpath(os.path.join(root, file), self.renpyDirs[0][0]).replace(os.sep, "/")
-                            image_size = renpy.image_size(relative_path)
-                            folder_names[name] = (name if name != "normal" else "", image_size)
-                            break
-                        else:
-                            continue
-                        break
-            return folder_names
-
-        @timer
-        def process_audio(self):
-            """
-            Обрабатывает аудио. Поддерживает расширения (".wav", ".mp2", ".mp3", ".ogg", ".opus")
-
-            Имя аудио для вызова будет в формате:
-            [имя][_постфикс]
-
-            Пример:
-            newmusic_mymod
-            """
-            audio_extensions = {".wav", ".mp2", ".mp3", ".ogg", ".opus"}
-            for file in self.renpyFiles:
-                if self.modID in file:
-                    file_name = os.path.splitext(os.path.basename(file))[0] + self.modPostfix
-                    if file.endswith(tuple(audio_extensions)):
-                        self.count_file("sound", file_name, file)
-        @timer
-        def process_fonts(self):
-            """
-            Обрабатывает шрифты. Поддерживает расширения (".ttf", ".otf")
-
-            Имя шрифта для вызова будет в формате:
-            [имя][_постфикс]
-
-            Пример:
-            newfont_mymod
-            """
-            font_extensions = {".ttf", ".otf"}
-            for file in renpy.list_files():
-                if self.modID in file:
-                    file_name = os.path.splitext(os.path.basename(file))[0] + self.modPostfix
-                    if file.endswith(tuple(font_extensions)):
-                        self.count_file("font", file_name, file)
-
-        @timer
-        def process_image(self, file_path, image_name):
-            rel_path = self._relpath(file_path, self.renpyDirs[0][0])
-            self.count_file("image", image_name, rel_path)
-
-        @timer
-        def process_images(self):
-            """
-            Обрабатывает изображения. Поддерживает изображения в подпапках.
-
-            Имя изображения для вызова будет в формате:
-            [папка] [подпапка] [имя][_постфикс]
-
-            Пример:
-            bg background_mymod
-            bg subfolder background_mymod
-            bg subfolder subsubfolder background_mymod
-            """
-            for folder in self._listdir(self.modImagesPath):
-                path = os.path.join(self.modImagesPath, folder).replace(os.sep, "/")
-                if self._isfile(path):
-                    image_name = os.path.splitext(os.path.basename(path))[0] + self.modPostfix
-                    self.process_image(path, image_name)
-                else:
-                    if folder != 'sprites':
-                        for root, dirs, files in self._walk(path):
-                            for file in files:
-
-                                image_path = os.path.join(root, file).replace("\\", "/")
-                                image_name = os.path.splitext(file)[0]
-                                relative_path = os.path.relpath(root, self.modImagesPath) # Получаем полный путь к изображению и удаляем путь к корню
-                                folder_structure = relative_path.split(os.sep) # Разделяем путь на компоненты и объединяем их в имя изображения
-                                folder_index = folder_structure.index(folder)
-                                folder_structure = folder_structure[folder_index:] + [image_name] # Оставляем только элементы после папки folder
-                                image_name_with_folder = ' '.join(folder_structure).replace('/', '').replace('\\', '') + self.modPostfix
-                                image_path = os.path.relpath(image_path, self.renpyDirs[0][0]).replace(os.sep, "/")
-                                self.count_file("image", image_name_with_folder, image_path)
+            
+            for dir_path, files in self.modFiles.items():
+                if dir_path.startswith(sprite_dir):
+                    relative_path = self.get_rel_path(dir_path, sprite_dir)
+                    
+                    if not relative_path:  # Корневая папка спрайта, если не нашли clothes/emo/acc и другие папки
+                        for file_path in files:
+                            if 'body' in os.path.basename(file_path):
+                                parts['body'] = '"{}"'.format(file_path)
+                                break
+                    elif relative_path == 'clothes':
+                        for file_path in files:
+                            name_part = os.path.basename(file_path).rsplit('.', 1)[0]
+                            if '_' in name_part:
+                                clothes_name = name_part.split('_', 2)[-1]
+                            else:
+                                clothes_name = name_part
+                            parts['clothes'].append((clothes_name, file_path))
+                    elif relative_path == 'emo':
+                        for file_path in files:
+                            name_part = os.path.basename(file_path).rsplit('.', 1)[0]
+                            if '_' in name_part:
+                                emo_name = name_part.split('_', 2)[-1]
+                            else:
+                                emo_name = name_part
+                            parts['emo'].append((emo_name, file_path))
+                    elif relative_path == 'acc':
+                        for file_path in files:
+                            name_part = os.path.basename(file_path).rsplit('.', 1)[0]
+                            if '_' in name_part:
+                                acc_name = name_part.split('_', 2)[-1]
+                            else:
+                                acc_name = name_part
+                            parts['acc'].append((acc_name, file_path))
+            
+            if not parts['body']:
+                parts['body'] = 'im.Alpha("images/misc/soviet_games.png", 0.0)'
+            
+            return parts
 
         def build_sprite(self, composite_size, body_expr, extra_layer_paths):
             """
@@ -310,7 +272,7 @@ init -1500 python:
                 layers_joined = ",\n                                            ".join(layers_parts)
 
                 sprite_tints = ""
-                for tint_name, tint in self.modSpritesTints:
+                for tint_name, tint in self.SPRITE_TINTS.items():
                     sprite_tints += """
                     "persistent.sprite_time=='{tint_name}'",
                     Transform(Composite({size},
@@ -329,6 +291,87 @@ init -1500 python:
                 return sprite
             except Exception as e:
                 return self.error("Failed to build {} sprite: {}".format(body_expr, e))
+
+        def count_file(self, type, file_name, file):
+            """
+            Добавляет название файла, сам файл и его тип в лист modFiles.
+
+            :param type: str
+                тип файла
+            :param file_name: srt
+                имя файла
+            :param file: str
+                путь до файла
+            """
+            self.modReadyToInitFiles.append([type, file_name, file])
+
+        #region обработка файлов
+        @timer
+        def process_audio(self):
+            """
+            Обрабатывает аудио. Поддерживает расширения (".wav", ".mp2", ".mp3", ".ogg", ".opus")
+
+            Имя аудио для вызова будет в формате:
+            [имя][_постфикс]
+
+            Пример:
+            newmusic_mymod
+            """
+            for dir_path, files in self.modFiles.items():
+                for file_path in files:
+                    if any(file_path.endswith(ext) for ext in self.EXTENSIONS["AUDIO"]):
+                        file_name = os.path.basename(file_path).rsplit('.', 1)[0] + self.modPostfix
+                        self.count_file("sound", file_name, file_path)
+
+        @timer
+        def process_fonts(self):
+            """
+            Обрабатывает шрифты. Поддерживает расширения (".ttf", ".otf")
+
+            Имя шрифта для вызова будет в формате:
+            [имя][_постфикс]
+
+            Пример:
+            newfont_mymod
+            """
+            for dir_path, files in self.modFiles.items():
+                for file_path in files:
+                    if any(file_path.endswith(ext) for ext in self.EXTENSIONS["FONT"]):
+                        file_name = os.path.basename(file_path).rsplit('.', 1)[0] + self.modPostfix
+                        self.count_file("font", file_name, file_path)
+
+        @timer
+        def process_images(self):
+            """
+            Обрабатывает изображения. Поддерживает изображения в подпапках.
+
+            Имя изображения для вызова будет в формате:
+            [папка] [подпапка] [имя][_постфикс]
+
+            Пример:
+            bg background_mymod
+            bg subfolder background_mymod
+            bg subfolder subsubfolder background_mymod
+            """
+            
+            for dir_path, files in self.modFiles.items():
+                if "/" + self.NAMES["SPRITES_FOLDER"] in dir_path:
+                    continue
+                    
+                if self.modImagesPath in dir_path:
+                    for file_path in files:
+                        if any(file_path.endswith(ext) for ext in self.EXTENSIONS["IMAGE"]):
+                            rel_to_images = self.get_rel_path(dir_path, self.modImagesPath)
+                            file_name = os.path.basename(file_path).rsplit('.', 1)[0]
+                            
+                            if rel_to_images:
+                                # Создаём имя из структуры папок
+                                folder_parts = rel_to_images.split("/")
+                                image_name = " ".join(folder_parts + [file_name]) + self.modPostfix
+                            else:
+                                image_name = file_name + self.modPostfix
+                            
+                            self.count_file("image", image_name, file_path)
 
         def process_sprite_clothes_emo_acc(self, emo_l, clothes_l, acc_l, who, file_body, dist):
             """Обрабатывает спрайт [тело] [эмоция] [одежда] [аксессуар]"""
@@ -420,51 +463,42 @@ init -1500 python:
             dv_mymod normal sport
             dv_mymod normal sport jewelry
             """
-            for folder in self._listdir(self.modImagesPath):
-                if folder == "sprites":
-                    path = os.path.join(self.modImagesPath, folder).replace(os.sep, "/")
-                    for dist in os.listdir(path):
-                        who_path = os.path.join(path, dist).replace(os.sep, "/")
-                        for who in os.listdir(who_path):
-                            who_path_num = os.path.join(who_path, who).replace(os.sep, "/")
-                            for numb in os.listdir(who_path_num):
-                                sprite_folders = os.listdir(os.path.join(who_path_num, numb).replace(os.sep, "/"))
-
-                                for i in sprite_folders:
-                                    if 'body' in i:
-                                        file_body = "\"" + str(os.path.relpath(os.path.join(who_path_num, numb, i).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) + "\""
-                                        break
-                                else:
-                                    file_body = 'im.Alpha("images/misc/soviet_games.png", 0.0)' # Заглушка, если не нашли тело
-
-                                clothes_l = []
-                                emo_l = []
-                                acc_l = []
-
-                                if 'clothes' in sprite_folders:
-                                    clothes_l = [(os.path.splitext(clothes)[0].split('_'+numb+"_", 1)[-1], os.path.relpath(os.path.join(who_path_num, numb, 'clothes', clothes).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) for clothes in os.listdir(os.path.join(who_path_num, numb, 'clothes'))]
-
-                                if 'emo' in sprite_folders:
-                                    emo_l = [(os.path.splitext(emo)[0].split('_'+numb+"_", 1)[-1], os.path.relpath(os.path.join(who_path_num, numb, 'emo', emo).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) for emo in os.listdir(os.path.join(who_path_num, numb, 'emo'))]
-
-                                if 'acc' in sprite_folders:
-                                    acc_l = [(os.path.splitext(acc)[0].split('_'+numb+"_", 1)[-1], os.path.relpath(os.path.join(who_path_num, numb, 'acc', acc).replace(os.sep, "/"), self.renpyDirs[0][0]).replace(os.sep, "/")) for acc in os.listdir(os.path.join(who_path_num, numb, 'acc'))]
-
-                                self.process_sprite(who, file_body, dist)
-                                if clothes_l and emo_l and acc_l:
-                                    self.process_sprite_clothes_emo_acc(emo_l, clothes_l, acc_l, who, file_body, dist)
-                                elif clothes_l and emo_l:
-                                    self.process_sprite_clothes_emo(emo_l, clothes_l, who, file_body, dist)
-                                elif clothes_l and acc_l:
-                                    self.process_sprite_clothes_acc(clothes_l, acc_l, who, file_body, dist)
-                                elif emo_l and acc_l:
-                                    self.process_sprite_emo_acc(emo_l, acc_l,  who, file_body, dist)
-                                elif clothes_l:
-                                    self.process_sprite_clothes(clothes_l, who, file_body, dist)
-                                elif acc_l:
-                                    self.process_sprite_acc(acc_l, who, file_body, dist)
-                                elif emo_l:
-                                    self.process_sprite_emo(emo_l, who, file_body, dist)
+            processed_sprites = set()
+            
+            # Ищем все уникальные (sic!) спрайты в кэше
+            for dir_path in self.modFiles.keys():
+                if self.modSpritesPath in dir_path:
+                    # Извлекаем путь спрайта: sprites/distance/character/number
+                    relative_path = self.get_rel_path(dir_path, self.modSpritesPath)
+                    path_parts = relative_path.split("/")
+                    
+                    if len(path_parts) >= 3:  # distance/character/number. Колхозненько, но работает
+                        dist, who, numb = path_parts[0], path_parts[1], path_parts[2]
+                        sprite_key = (dist, who, numb)
+                        
+                        if sprite_key not in processed_sprites and dist in self.modDist:
+                            processed_sprites.add(sprite_key)
+                            sprite_dir = "{}/{}/{}/{}".format(self.modSpritesPath, dist, who, numb)
+                            
+                            parts = self._get_sprite_parts(sprite_dir)
+                            
+                            # Обрабатываем все комбинации
+                            self.process_sprite(who, parts['body'], dist)
+                            
+                            if parts['clothes'] and parts['emo'] and parts['acc']:
+                                self.process_sprite_clothes_emo_acc(parts['emo'], parts['clothes'], parts['acc'], who, parts['body'], dist)
+                            elif parts['clothes'] and parts['emo']:
+                                self.process_sprite_clothes_emo(parts['emo'], parts['clothes'], who, parts['body'], dist)
+                            elif parts['clothes'] and parts['acc']:
+                                self.process_sprite_clothes_acc(parts['clothes'], parts['acc'], who, parts['body'], dist)
+                            elif parts['emo'] and parts['acc']:
+                                self.process_sprite_emo_acc(parts['emo'], parts['acc'], who, parts['body'], dist)
+                            elif parts['clothes']:
+                                self.process_sprite_clothes(parts['clothes'], who, parts['body'], dist)
+                            elif parts['acc']:
+                                self.process_sprite_acc(parts['acc'], who, parts['body'], dist)
+                            elif parts['emo']:
+                                self.process_sprite_emo(parts['emo'], who, parts['body'], dist)
 
         def process_files(self):
             """
@@ -473,33 +507,38 @@ init -1500 python:
             Если write_into_file равно True, вместо инициализации записывает ресурсы мода в отдельный файл. Для дальнейшей инициализации ресурсов мода из файла необходимо перезагрузить БЛ.
             """
             if self.write_into_file:
-                with builtins.open(self.modPath + "/autoinit_assets.rpy", "w") as log_file:
+                with builtins.open(self.modAssetsPath, "w") as log_file:
                     log_file.write("init -1499:\n    ")
-                    for type, file_name, file in self.modFiles:
+                    for type, file_name, file in self.modReadyToInitFiles:
                         if type == "sound":
                             log_file.write("$ %s = \"%s\"\n    " % (file_name, file))
                         elif type == "font":
                             log_file.write("$ %s = \"%s\"\n    " % (file_name, file))
                         elif type == "image":
                             log_file.write("image %s = \"%s\"\n    " % (file_name, file))
-                        if type == "sprite":
+                        elif type == "sprite":
                             log_file.write("image %s = %s\n    " % (file_name, file.strip()))
             else:
-                for type, file_name, file in self.modFiles:
-                    if type == "sound":
-                        setattr(store, file_name, file)
-                    elif type == "font":
-                        setattr(store, file_name, file)
-                    elif type == "image":
-                        renpy.image(file_name, file)
-                    if type == "sprite":
-                        renpy.image(file_name, eval(file))
+                for type, file_name, file in self.modReadyToInitFiles:
+                    try:
+                        if type == "sound":
+                            setattr(store, file_name, file)
+                        elif type == "font":
+                            setattr(store, file_name, file)
+                        elif type == "image":
+                            renpy.image(file_name, file)
+                        elif type == "sprite":
+                            renpy.image(file_name, eval(file))
+                    except Exception as e:
+                        self.error("Failed to process {} '{}': {}".format(type, file_name, e))
+        #endregion
+
         @timer
         def initialize(self):
             """
-            Инициализация ресурсов мода и запись создания объекта класса, если не имеем уже созданный файл с объявлёнными файлами.
+            Инициализация ресурсов мода и запись создания объекта класса, если не имеем уже созданный файл с объявлёнными ресурсами мода.
             """
-            if not (os.path.exists(self.modPath + "/autoinit_assets.rpy")):
+            if not os.path.exists(self.modAssetsPath):
                 if self.initialize_audio:
                     self.process_audio()
                 if self.initialize_fonts:
