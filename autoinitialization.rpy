@@ -41,7 +41,8 @@ init -1500 python:
                 "IMAGES_FOLDER": "images",
                 "SPRITES_FOLDER": "sprites",
                 "ASSETS": "autoinit_assets",
-                "LOGGER": "Logger"
+                "LOGGER": "Logger",
+                "CACHE": ".autoinit_cache"
             }
             self.SPRITE_TINTS = {
                 "sunset": "TintMatrix(Color(hls=(0.94, 0.82, 1.0)))",
@@ -69,19 +70,21 @@ init -1500 python:
             self.modSpritesPath = self.modImagesPath + "/" + self.NAMES["SPRITES_FOLDER"]
             self.modAssetsPath = "game/" + self.modPath + "/" + self.NAMES["ASSETS"] + ".rpy" 
             self.modLoggerPath = self.modID + self.NAMES["LOGGER"] + ".txt"
+            self.modCachePath = self.modID + self.NAMES["CACHE"]
 
-            self.modDist = self.process_distances()
+            if ((self.write_into_file) and not self.check_cache()) or not(self.write_into_file):
+                self.modDist = self.process_distances()
 
-            self.check_class_name()
-            self.check_duplicate()
+                self.check_class_name()
+                self.check_duplicate()
 
-            self.logger_create()
+                self.logger_create()
 
-            self.initialize()
+                self.initialize()
 
-            self.report()
+                self.report()
 
-            self.record_instance()
+                self.record_instance()
         
         #region Работа с путями
         def get_rel_path(self, dir_path, path):
@@ -226,6 +229,78 @@ init -1500 python:
         
         def report(self):
             self.logger_write("TOTAL: {total}\nIMAGES: {images}\nSPRITES: {sprites}\nAUDIO: {audio}\nFONTS: {fonts}".format(total=self.modInitializedFiles["total"], images=self.modInitializedFiles["image"], sprites=self.modInitializedFiles["sprite"], audio=self.modInitializedFiles["sound"], fonts=self.modInitializedFiles["font"]))
+
+        #region Хэширование файлов для варианта объявления через .rpy файл
+        def generate_hash(self):
+            """Генерирует хеш всех файлов мода для проверки изменений"""
+            try:
+                import hashlib
+                hash_obj = hashlib.md5()
+                
+                # Сортируем файлы для стабильного хеша
+                all_files = []
+                for dir_path, files in self.modFiles.items():
+                    all_files.extend(files)
+                all_files.sort()
+                
+                for file_path in all_files:
+                    try:
+                        # Добавляем путь к файлу и размер
+                        hash_obj.update(file_path.encode('utf-8'))
+                        try:
+                            file_data = renpy.loader.load(file_path)
+                            hash_obj.update(str(len(file_data)).encode('utf-8'))
+                        except:
+                            continue
+                    except Exception as e:
+                        continue
+                
+                return hash_obj.hexdigest()
+            except Exception as e:
+                self.error("Failed to generate files hash: {}".format(e))
+                return None
+
+        def load_cache(self):
+            """Загружает кэш из файла"""
+            try:
+                if renpy.windows:
+                    try:
+                        with builtins.open(self.modCachePath, "rb") as cache_file:  # Открываем в бинарном режиме
+                            return cache_file.read().decode('utf-8').strip()
+                    except (IOError, OSError):
+                        return None
+                return None
+            except Exception as e:
+                return None
+
+        def save_cache(self, files_hash):
+            """Сохраняет кэш в файл"""
+            try:
+                if renpy.windows:
+                    try:
+                        with builtins.open(self.modCachePath, "wb") as cache_file:  # Открываем в бинарном режиме
+                            cache_file.write(files_hash.encode('utf-8'))  # Кодируем в UTF-8
+                    except (IOError, OSError) as e:
+                        self.error("Failed to save cache: {}".format(e))
+            except Exception as e:
+                self.error("Failed to save cache: {}".format(e))
+
+        def check_cache(self):
+            """Проверяет актуальность кэша"""
+            try:
+                current_hash = self.generate_hash()
+                if current_hash is None:
+                    return False
+                    
+                cached_hash = self.load_cache()
+                if cached_hash is None:
+                    return False
+                    
+                return current_hash == cached_hash
+            except Exception as e:
+                self.error("Cache check failed: {}".format(e))
+                return False
+        #endregion
 
         def _get_sprite_parts(self, sprite_dir):
             """Извлекает части спрайта из папки, если не находим тело как часть спрайта - ставим заглушку."""
@@ -556,13 +631,16 @@ init -1500 python:
             """
             Инициализация ресурсов мода и запись создания объекта класса, если не имеем уже созданный файл с объявлёнными ресурсами мода.
             """
-            if not os.path.exists(self.modAssetsPath):
-                if self.initialize_audio:
-                    self.process_audio()
-                if self.initialize_fonts:
-                    self.process_fonts()
-                if self.initialize_images:
-                    self.process_images()
-                if self.initialize_sprites:
-                    self.process_sprites()
-                self.process_files()
+            if self.initialize_audio:
+                self.process_audio()
+            if self.initialize_fonts:
+                self.process_fonts()
+            if self.initialize_images:
+                self.process_images()
+            if self.initialize_sprites:
+                self.process_sprites()
+            self.process_files()
+            if self.write_into_file:
+                current_hash = self.generate_hash()
+                if current_hash:
+                    self.save_cache(current_hash)
