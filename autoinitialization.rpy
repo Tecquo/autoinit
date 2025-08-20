@@ -56,6 +56,13 @@ init -1500 python:
             
             self.modFiles = self.cache_mod_files()
             self.modReadyToInitFiles = []
+            self.modInitializedFiles = {
+                "image": 0,
+                "sprite": 0,
+                "sound": 0,
+                "font": 0,
+                "total": 0,
+            }
             
             self.modPath = self.find_mod_path()
             self.modImagesPath = self.modPath + "/" + self.NAMES["IMAGES_FOLDER"]
@@ -71,6 +78,10 @@ init -1500 python:
             self.logger_create()
 
             self.initialize()
+
+            self.report()
+
+            self.record_instance()
         
         #region Работа с путями
         def get_rel_path(self, dir_path, path):
@@ -194,7 +205,7 @@ init -1500 python:
             if renpy.windows:
                 try:
                     with builtins.open(self.modLoggerPath, "a+") as logger:
-                        logger.write(txt + "\n")
+                        logger.write(str(txt) + "\n")
                 except Exception as e:
                     self.error("Error while trying to write into logger: {}".format(e))
         #endregion
@@ -209,9 +220,12 @@ init -1500 python:
                 start = time.time()
                 result = func(self, *args, **kwargs)
                 end = time.time()
-                self.logger_write("{} took {:.2f} seconds".format(func.__name__, end - start))
+                self.logger_write("{} took {:.4f} seconds".format(func.__name__, end - start))
                 return result
             return wrapper
+        
+        def report(self):
+            self.logger_write("TOTAL: {total}\nIMAGES: {images}\nSPRITES: {sprites}\nAUDIO: {audio}\nFONTS: {fonts}".format(total=self.modInitializedFiles["total"], images=self.modInitializedFiles["image"], sprites=self.modInitializedFiles["sprite"], audio=self.modInitializedFiles["sound"], fonts=self.modInitializedFiles["font"]))
 
         def _get_sprite_parts(self, sprite_dir):
             """Извлекает части спрайта из папки, если не находим тело как часть спрайта - ставим заглушку."""
@@ -510,6 +524,8 @@ init -1500 python:
                 with builtins.open(self.modAssetsPath, "w") as log_file:
                     log_file.write("init -1499:\n    ")
                     for type, file_name, file in self.modReadyToInitFiles:
+                        self.modInitializedFiles[type] += 1
+                        self.modInitializedFiles["total"] += 1
                         if type == "sound":
                             log_file.write("$ %s = \"%s\"\n    " % (file_name, file))
                         elif type == "font":
@@ -521,6 +537,8 @@ init -1500 python:
             else:
                 for type, file_name, file in self.modReadyToInitFiles:
                     try:
+                        self.modInitializedFiles[type] += 1
+                        self.modInitializedFiles["total"] += 1
                         if type == "sound":
                             setattr(store, file_name, file)
                         elif type == "font":
@@ -548,4 +566,3 @@ init -1500 python:
                 if self.initialize_sprites:
                     self.process_sprites()
                 self.process_files()
-            self.record_instance()
