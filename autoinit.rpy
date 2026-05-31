@@ -64,6 +64,8 @@ init -1500 python:
 
             self._tint_matrices = self.SPRITE_TINTS
 
+            self._body_stub = Transform(get_image("misc/soviet_games.png"), alpha=0.0)
+
             if self._try_init_from_cache():
                 self.logger_write("Initialized from cache.")
             else:
@@ -226,7 +228,7 @@ init -1500 python:
                         renpy.image(name, asset["path"])
                     elif t == "sprite":
                         body = asset.get("body")
-                        body_val = body if body else im.Alpha("images/misc/soviet_games.png", 0.0)
+                        body_val = body if body else self._body_stub
                         layers = asset.get("layers", [])
                         dist = asset["dist"]
                         obj = self.build_sprite(self.modDist[dist][1], body_val, layers)
@@ -309,7 +311,7 @@ init -1500 python:
                             parts['acc'].append((acc_name, file_path))
 
             if not parts['body']:
-                parts['body'] = im.Alpha("images/misc/soviet_games.png", 0.0)
+                parts['body'] = self._body_stub
 
             return parts
 
