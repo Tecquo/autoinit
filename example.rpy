@@ -1,9 +1,9 @@
-init python:
+init -1500 python:
     class AutoInit_autoinit(AutoInit):
         modID = "autoinit"
         modPostfix = "mymod"
 
-init:
+init -1499:
     # Не забудьте объявить свой мод
     # $ mods["autoinit_example"] = "Авто инит"
     $ AutoInit_autoinit()
