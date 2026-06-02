@@ -64,7 +64,7 @@ init -1500 python:
 
             self._tint_matrices = self.SPRITE_TINTS
 
-            self._body_stub = Transform(get_image("misc/soviet_games.png"), alpha=0.0)
+            self._body_stub = Transform("images/misc/soviet_games.png", alpha=0.0)
 
             if self._try_init_from_cache():
                 self.logger_write("Initialized from cache.")
