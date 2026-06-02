@@ -1,8 +1,16 @@
-init -1500 python:
+init -1500 python in autoinit_store:
     import time
     import builtins
     import os
     import json
+
+    # workaround для работы внутри именованного кастомного store
+    store = renpy.store
+    TintMatrix = store.TintMatrix
+    Color = store.Color
+    Transform = store.Transform
+    ConditionSwitch = store.ConditionSwitch
+    Composite = store.Composite
 
     class AutoInit:
         """

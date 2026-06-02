@@ -40,7 +40,7 @@
 
 ```renpy
 init python:
-    class AutoInit_mymod(AutoInit):
+    class AutoInit_mymod(autoinit_store.AutoInit):
         modID = "mymod"
         modPostfix = "mymod"
 
@@ -61,7 +61,7 @@ init:
 
 ```renpy
 init python:
-    class AutoInit_mymod(AutoInit):
+    class AutoInit_mymod(autoinit_store.AutoInit):
         modID = "mymod"
         modPostfix = "mymod"
         initialize_images = True
@@ -142,7 +142,7 @@ init:
 
 ```renpy
 init python:
-    class AutoInit_mymod(AutoInit):
+    class AutoInit_mymod(autoinit_store.AutoInit):
         modID = "mymod"
         NAMES = {
             "IMAGES_FOLDER": "your_image_folder_name", # Имя папки с изображениями, по умолчанию "images"
@@ -156,7 +156,7 @@ init python:
 
 ```renpy
 init python:
-    class AutoInit_mymod(AutoInit):
+    class AutoInit_mymod(autoinit_store.AutoInit):
         modID = "mymod"
         EXTENSIONS = {
             "IMAGE": ('.png', '.jpg', '.jpeg', '.webp', '.gif'), # изображения
@@ -169,7 +169,7 @@ init python:
 
 ```renpy
 init python:
-    class AutoInit_mymod(AutoInit):
+    class AutoInit_mymod(autoinit_store.AutoInit):
         modID = "mymod"
         SPRITE_TINTS = {
             "sunset": "TintMatrix(Color(hls=(0.94, 0.82, 1.0)))", # вечерний оттенок при persistent.sprite_time == "sunset"

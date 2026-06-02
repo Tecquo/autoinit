@@ -1,5 +1,5 @@
 init -1500 python:
-    class AutoInit_autoinit(AutoInit):
+    class AutoInit_autoinit(autoinit_store.AutoInit):
         modID = "autoinit"
         modPostfix = "mymod"
 
